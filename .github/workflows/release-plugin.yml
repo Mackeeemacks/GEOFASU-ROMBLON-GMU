@@ -1,0 +1,96 @@
+name: Release GEOFASU Plugin
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Read plugin version
+        id: version
+        shell: bash
+        run: |
+          VERSION=$(python - <<'PY'
+          import configparser
+
+          cfg = configparser.ConfigParser()
+          cfg.read(
+              "geofasu/metadata.txt",
+              encoding="utf-8"
+          )
+
+          version = cfg.get(
+              "general",
+              "version"
+          ).strip()
+
+          if not version:
+              raise SystemExit(
+                  "Missing plugin version"
+              )
+
+          print(version)
+          PY
+          )
+
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+
+      - name: Validate tag matches metadata
+        shell: bash
+        run: |
+          EXPECTED="v${{ steps.version.outputs.version }}"
+          ACTUAL="${GITHUB_REF_NAME}"
+
+          echo "Expected tag: $EXPECTED"
+          echo "Actual tag:   $ACTUAL"
+
+          if [ "$EXPECTED" != "$ACTUAL" ]; then
+            echo "Tag does not match metadata version."
+            exit 1
+          fi
+
+      - name: Build plugin ZIP
+        run: |
+          python scripts/build_plugin.py
+
+      - name: Generate plugins.xml
+        run: |
+          python scripts/generate_plugins_xml.py
+
+      - name: Verify artifacts
+        shell: bash
+        run: |
+          ls -lah dist/
+
+          test -f \
+            "dist/geofasu-${{ steps.version.outputs.version }}.zip"
+
+          test -f \
+            "dist/plugins.xml"
+
+      - name: Create GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          gh release create \
+            "${GITHUB_REF_NAME}" \
+            "dist/geofasu-${{ steps.version.outputs.version }}.zip" \
+            "dist/plugins.xml" \
+            --title "GEOFASU ${{ steps.version.outputs.version }}" \
+            --notes "GEOFASU QGIS plugin release ${{ steps.version.outputs.version }}"

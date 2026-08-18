@@ -1,0 +1,26 @@
+﻿[CSExport]
+Version=CSPro 7.7
+
+[Dictionaries]
+File={{DICTIONARY_FILE}}
+
+[ExportType]
+FilesCreated=Single
+ReportLabels=Names
+ItemsAre=Included
+ExportMethod=CommaDelimited
+MultipleOccs=SeparateRecords
+JoinSingleWithMultiple=No
+ExportRecordType=No
+ExportItemsSubItems=Items
+UnicodeOutput=Yes
+
+[Items]
+Item=PRV
+Item=MUN
+Item=BGY
+Item=EA
+Item=BSN
+Item=HUSN
+Item=HSN
+Item=UPDCODE

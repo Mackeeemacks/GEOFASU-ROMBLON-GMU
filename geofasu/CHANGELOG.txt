@@ -1,0 +1,27 @@
+2.0.3
+- Replaced focus/keystroke dictionary export with unattended Win32 menu/dialog automation.
+- Dictionary export now requires no user keyboard or mouse interaction.
+- Added direct validation of the generated DCF file and clearer dictionary-stage diagnostics.
+- Preserved rollout CADCS credential discovery, CSDBE validation/merge/export, and all GeoPackage workflows.
+
+GEOFASU 2.0.2
+==============
+- Fixed CADCS.pen UTF-16LE string scanner that was double-escaped in 2.0.1.
+- Added ASCII/single-byte fallback scanning for future CADCS rollouts.
+- Ranks credentials containing the current YYMM rollout token first.
+- Validates discovered rollout credentials against the first real CSDBE during automated dictionary extraction.
+- Tries discovered candidates sequentially before declaring authentication failure.
+- Keeps password values out of UI messages and user-facing logs.
+- Preserves all existing GeoPackage, CSV, UPDCODE, and validation workflows.
+
+GEOFASU 2.0.0
+
+- Targeted for QGIS 3.40.x / Windows x64.
+- Added current-rollout CADCS.pen import.
+- Removed manual CSDBE password entry.
+- Added automatic rollout credential discovery.
+- Automated embedded dictionary extraction through CSPro 7.7 Data Viewer.
+- Production CSDBE validation now requires every expected sample file when enabled.
+- GeoPackage discovery now searches FIELD VALIDATION OUTPUT\GEOPACKAGES recursively.
+- Preserved CSV household UPDCODE matching and QGIS diagnostic layers.
+- Refreshed Post-Process UI and status messages.

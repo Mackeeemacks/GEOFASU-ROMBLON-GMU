@@ -1,0 +1,452 @@
+<?xml version='1.0' encoding='utf-8'?>
+<ui version="4.0">
+ <class>postProcessDialogBase</class>
+ <widget class="QDialog" name="postProcessDialogBase">
+  <property name="windowTitle">
+   <string>GEOFASU — POST-PROCESS</string>
+  </property>
+  <property name="minimumSize">
+   <size>
+    <width>1040</width>
+    <height>700</height>
+   </size>
+  </property>
+  <property name="styleSheet">
+   <string notr="true">
+QDialog{background:#f4f7fb;color:#1f2937;}
+QGroupBox{font-weight:700;border:1px solid #cbd5e1;border-radius:9px;margin-top:12px;padding-top:10px;background:white;}
+QGroupBox::title{subcontrol-origin:margin;left:14px;padding:0 7px;color:#111827;}
+QLineEdit,QPlainTextEdit{border:1px solid #cbd5e1;border-radius:6px;padding:6px 9px;background:white;}
+QLineEdit:focus,QPlainTextEdit:focus{border:1px solid #3b82f6;}
+QCheckBox{spacing:8px;font-weight:600;}
+QPushButton{min-height:28px;max-height:30px;min-width:78px;max-width:118px;padding:3px 10px;border-radius:6px;border:1px solid #b8c2ce;background:#f8fafc;color:#334155;font-weight:600;}
+QPushButton:hover{background:#eef2f7;border-color:#94a3b8;}
+QPushButton:disabled{background:#f1f5f9;border-color:#e2e8f0;color:#94a3b8;}
+QPushButton#btn_browse_excel,QPushButton#btn_browse_validated,QPushButton#btn_browse_output,QPushButton#btn_browse_csdbe_data,QPushButton#btn_browse_dictionary,QPushButton#btn_browse_csconcat{background:#eef2ff;border-color:#c7d2fe;color:#3730a3;}
+QPushButton#btn_read_excel{min-width:118px;max-width:118px;background:#2563eb;border-color:#1d4ed8;color:white;font-weight:700;}
+QPushButton#btn_read_excel:hover{background:#1d4ed8;}
+QPushButton#btn_process_csdbe{min-width:118px;max-width:118px;background:#0f766e;border-color:#0d6962;color:white;font-weight:700;}
+QPushButton#btn_process_csdbe:hover{background:#0d6962;}
+QPushButton#btn_process_csdbe:disabled{background:#dbe8e6;border-color:#cbdedb;color:#78928e;}
+QPushButton#btn_load_all{min-width:190px;max-width:220px;min-height:34px;max-height:36px;background:#15803d;border-color:#166534;color:white;font-size:11pt;font-weight:800;}
+QPushButton#btn_load_all:hover{background:#166534;}
+QPushButton#btn_load_all:disabled{background:#d8e8dd;border-color:#c7ddce;color:#7e9986;}
+QLabel#label_csdbe_status{padding:9px 11px;border:1px solid #bfdbfe;border-radius:6px;background:#eff6ff;color:#1e3a8a;}
+QLabel#label_cadcs_instruction{padding:2px 4px;color:#64748b;font-style:italic;}
+   </string>
+  </property>
+  <layout class="QVBoxLayout" name="verticalLayout">
+   <property name="leftMargin">
+    <number>18</number>
+   </property>
+   <property name="topMargin">
+    <number>14</number>
+   </property>
+   <property name="rightMargin">
+    <number>18</number>
+   </property>
+   <property name="bottomMargin">
+    <number>14</number>
+   </property>
+   <property name="spacing">
+    <number>10</number>
+   </property>
+   <item>
+    <widget class="QLabel" name="label_header">
+     <property name="text">
+      <string>&lt;h2&gt;GEOFASU Post-Processing&lt;/h2&gt;&lt;p&gt;LFS sample validation, CSDBE cross-checking, and GeoPackage consolidation.&lt;/p&gt;</string>
+     </property>
+    </widget>
+   </item>
+   <item>
+    <widget class="QScrollArea" name="scrollArea">
+     <property name="widgetResizable">
+      <bool>true</bool>
+     </property>
+     <property name="frameShape">
+      <enum>QFrame::NoFrame</enum>
+     </property>
+     <property name="horizontalScrollBarPolicy">
+      <enum>Qt::ScrollBarAlwaysOff</enum>
+     </property>
+     <property name="verticalScrollBarPolicy">
+      <enum>Qt::ScrollBarAsNeeded</enum>
+     </property>
+     <widget class="QWidget" name="scrollAreaWidgetContents">
+      <property name="geometry">
+       <rect>
+        <x>0</x>
+        <y>0</y>
+        <width>1000</width>
+        <height>1150</height>
+       </rect>
+      </property>
+      <layout class="QVBoxLayout" name="scrollContentLayout">
+       <property name="leftMargin">
+        <number>6</number>
+       </property>
+       <property name="topMargin">
+        <number>4</number>
+       </property>
+       <property name="rightMargin">
+        <number>6</number>
+       </property>
+       <property name="bottomMargin">
+        <number>8</number>
+       </property>
+       <property name="spacing">
+        <number>10</number>
+       </property>
+       <item>
+        <widget class="QGroupBox" name="group_excel">
+         <property name="title">
+          <string>1 — PSU Master List</string>
+         </property>
+         <layout class="QGridLayout" name="grid_excel">
+          <property name="horizontalSpacing">
+           <number>10</number>
+          </property>
+          <property name="verticalSpacing">
+           <number>8</number>
+          </property>
+          <item row="0" column="0">
+           <widget class="QLabel" name="label_excel">
+            <property name="text">
+             <string>Sample Excel:</string>
+            </property>
+           </widget>
+          </item>
+          <item row="0" column="1">
+           <widget class="QLineEdit" name="excel_path">
+            <property name="placeholderText">
+             <string>Select the LFS sample workbook…</string>
+            </property>
+           </widget>
+          </item>
+          <item row="0" column="2">
+           <widget class="QPushButton" name="btn_browse_excel">
+            <property name="text">
+             <string>Browse…</string>
+            </property>
+           </widget>
+          </item>
+          <item row="1" column="2">
+           <widget class="QPushButton" name="btn_read_excel">
+            <property name="text">
+             <string>Read Sample List</string>
+            </property>
+           </widget>
+          </item>
+          <columnstretch>0,1,0</columnstretch>
+         </layout>
+        </widget>
+       </item>
+       <item>
+        <widget class="QGroupBox" name="group_paths">
+         <property name="title">
+          <string>2 — Working Folders</string>
+         </property>
+         <layout class="QGridLayout" name="grid_paths">
+          <property name="horizontalSpacing">
+           <number>10</number>
+          </property>
+          <property name="verticalSpacing">
+           <number>8</number>
+          </property>
+          <item row="0" column="0">
+           <widget class="QLabel" name="label_validated">
+            <property name="text">
+             <string>Field validation:</string>
+            </property>
+           </widget>
+          </item>
+          <item row="0" column="1">
+           <widget class="QLineEdit" name="line_validated_path" />
+          </item>
+          <item row="0" column="2">
+           <widget class="QPushButton" name="btn_browse_validated">
+            <property name="text">
+             <string>Browse…</string>
+            </property>
+           </widget>
+          </item>
+          <item row="1" column="0">
+           <widget class="QLabel" name="label_output">
+            <property name="text">
+             <string>GEOMS output:</string>
+            </property>
+           </widget>
+          </item>
+          <item row="1" column="1">
+           <widget class="QLineEdit" name="line_output_path" />
+          </item>
+          <item row="1" column="2">
+           <widget class="QPushButton" name="btn_browse_output">
+            <property name="text">
+             <string>Browse…</string>
+            </property>
+           </widget>
+          </item>
+          <columnstretch>0,1,0</columnstretch>
+         </layout>
+        </widget>
+       </item>
+       <item>
+        <widget class="QGroupBox" name="group_csdbe">
+         <property name="sizePolicy">
+          <sizepolicy hsizetype="Preferred" vsizetype="MinimumExpanding">
+           <horstretch>0</horstretch>
+           <verstretch>0</verstretch>
+          </sizepolicy>
+         </property>
+         <property name="minimumHeight">
+          <number>72</number>
+         </property>
+         <property name="title">
+          <string>3 — Optional CSDBE Cross-Validation (CSPro 7.7)</string>
+         </property>
+         <layout class="QVBoxLayout" name="layout_csdbe_outer">
+          <property name="spacing">
+           <number>8</number>
+          </property>
+          <item>
+           <widget class="QCheckBox" name="check_process_csdbe">
+            <property name="text">
+             <string>Enable CSDBE processing and household/update-code cross-validation</string>
+            </property>
+           </widget>
+          </item>
+          <item>
+           <widget class="QWidget" name="csdbe_details_widget">
+            <property name="sizePolicy">
+             <sizepolicy hsizetype="Preferred" vsizetype="MinimumExpanding">
+              <horstretch>0</horstretch>
+              <verstretch>0</verstretch>
+             </sizepolicy>
+            </property>
+            <layout class="QGridLayout" name="grid_csdbe_details">
+             <property name="horizontalSpacing">
+              <number>10</number>
+             </property>
+             <property name="verticalSpacing">
+              <number>8</number>
+             </property>
+             <item row="0" column="0">
+              <widget class="QLabel" name="label_cadcs">
+               <property name="text">
+                <string>Rollout CADCS.pen:</string>
+               </property>
+              </widget>
+             </item>
+             <item row="0" column="1" colspan="2">
+              <widget class="QLineEdit" name="line_cadcs_path">
+               <property name="readOnly">
+                <bool>true</bool>
+               </property>
+               <property name="placeholderText">
+                <string>Read Sample List to determine the fixed rollout CADCS.pen location</string>
+               </property>
+              </widget>
+             </item>
+             <item row="1" column="1" colspan="2">
+              <widget class="QLabel" name="label_cadcs_instruction">
+               <property name="text">
+                <string>Copy CADCS.pen to the rollout folder shown above.</string>
+               </property>
+               <property name="wordWrap">
+                <bool>true</bool>
+               </property>
+              </widget>
+             </item>
+             <item row="2" column="0">
+              <widget class="QLabel" name="label_csdbe_data">
+               <property name="text">
+                <string>CSDBE DATA folder:</string>
+               </property>
+              </widget>
+             </item>
+             <item row="2" column="1">
+              <widget class="QLineEdit" name="line_csdbe_data_path" />
+             </item>
+             <item row="2" column="2">
+              <widget class="QPushButton" name="btn_browse_csdbe_data">
+               <property name="text">
+                <string>Browse…</string>
+               </property>
+              </widget>
+             </item>
+             <item row="3" column="0">
+              <widget class="QLabel" name="label_dictionary">
+               <property name="text">
+                <string>Generated dictionary:</string>
+               </property>
+              </widget>
+             </item>
+             <item row="3" column="1">
+              <widget class="QLineEdit" name="line_csdbe_dictionary">
+               <property name="readOnly">
+                <bool>true</bool>
+               </property>
+              </widget>
+             </item>
+             <item row="3" column="2">
+              <widget class="QPushButton" name="btn_browse_dictionary">
+               <property name="text">
+                <string>Choose Existing…</string>
+               </property>
+               <property name="visible">
+                <bool>false</bool>
+               </property>
+              </widget>
+             </item>
+             <item row="4" column="0">
+              <widget class="QLabel" name="label_csconcat">
+               <property name="text">
+                <string>CSPro 7.7 CSConcat:</string>
+               </property>
+              </widget>
+             </item>
+             <item row="4" column="1">
+              <widget class="QLineEdit" name="line_csconcat_path" />
+             </item>
+             <item row="4" column="2">
+              <widget class="QPushButton" name="btn_browse_csconcat">
+               <property name="text">
+                <string>Browse…</string>
+               </property>
+              </widget>
+             </item>
+             <item row="5" column="0" colspan="2">
+              <widget class="QLabel" name="label_csdbe_status">
+               <property name="text">
+                <string>CSDBE processing is disabled.</string>
+               </property>
+               <property name="wordWrap">
+                <bool>true</bool>
+               </property>
+              </widget>
+             </item>
+             <item row="5" column="2">
+              <widget class="QPushButton" name="btn_process_csdbe">
+               <property name="text">
+                <string>Process CSDBE</string>
+               </property>
+               <property name="enabled">
+                <bool>false</bool>
+               </property>
+              </widget>
+             </item>
+             <item row="6" column="0" colspan="3">
+              <widget class="QPlainTextEdit" name="text_csdbe_files">
+               <property name="readOnly">
+                <bool>true</bool>
+               </property>
+               <property name="minimumHeight">
+                <number>72</number>
+               </property>
+               <property name="maximumHeight">
+                <number>120</number>
+               </property>
+               <property name="placeholderText">
+                <string>CSDBE validation details will appear here.</string>
+               </property>
+              </widget>
+             </item>
+             <columnstretch>0,1,0</columnstretch>
+            </layout>
+           </widget>
+          </item>
+         </layout>
+        </widget>
+       </item>
+       <item>
+        <widget class="QGroupBox" name="group_detected_gpkg">
+         <property name="title">
+          <string>4 — Detected GeoPackages</string>
+         </property>
+         <layout class="QVBoxLayout" name="layout_detected">
+          <item>
+           <widget class="QPlainTextEdit" name="text_detected_gpkg">
+            <property name="readOnly">
+             <bool>true</bool>
+            </property>
+            <property name="minimumHeight">
+             <number>95</number>
+            </property>
+            <property name="maximumHeight">
+             <number>130</number>
+            </property>
+            <property name="placeholderText">
+             <string>Detected GeoPackages will appear here after reading the sample list.</string>
+            </property>
+           </widget>
+          </item>
+         </layout>
+        </widget>
+       </item>
+       <item>
+        <spacer name="scrollBottomSpacer">
+         <property name="orientation">
+          <enum>Qt::Vertical</enum>
+         </property>
+         <property name="sizeHint" stdset="0">
+          <size>
+           <width>20</width>
+           <height>10</height>
+          </size>
+         </property>
+        </spacer>
+       </item>
+      </layout>
+     </widget>
+    </widget>
+   </item>
+   <item>
+    <layout class="QHBoxLayout" name="layout_actions">
+     <item>
+      <spacer name="horizontalSpacer">
+       <property name="orientation">
+        <enum>Qt::Horizontal</enum>
+       </property>
+       <property name="sizeHint" stdset="0">
+        <size>
+         <width>40</width>
+         <height>20</height>
+        </size>
+       </property>
+      </spacer>
+     </item>
+     <item>
+      <widget class="QPushButton" name="btn_load_all">
+       <property name="text">
+        <string>Load &amp; Validate GeoPackages</string>
+       </property>
+       <property name="enabled">
+        <bool>false</bool>
+       </property>
+       <property name="default">
+        <bool>true</bool>
+       </property>
+      </widget>
+     </item>
+    </layout>
+   </item>
+   <item>
+    <widget class="QDialogButtonBox" name="button_box">
+     <property name="standardButtons">
+      <set>QDialogButtonBox::Close</set>
+     </property>
+    </widget>
+   </item>
+  </layout>
+ </widget>
+ <resources />
+ <connections>
+  <connection>
+   <sender>button_box</sender>
+   <signal>rejected()</signal>
+   <receiver>postProcessDialogBase</receiver>
+   <slot>reject()</slot>
+  </connection>
+ </connections>
+</ui>
