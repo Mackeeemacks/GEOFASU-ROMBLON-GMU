@@ -13,13 +13,16 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
+
       - name: Checkout repository
         uses: actions/checkout@v4
+
 
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
           python-version: "3.12"
+
 
       - name: Read plugin version
         id: version
@@ -41,7 +44,7 @@ jobs:
 
           if not version:
               raise SystemExit(
-                  "Missing plugin version"
+                  "metadata.txt version is missing"
               )
 
           print(version)
@@ -50,38 +53,163 @@ jobs:
 
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
 
-      - name: Validate tag matches metadata
+
+      - name: Validate tag matches metadata version
         shell: bash
         run: |
           EXPECTED="v${{ steps.version.outputs.version }}"
           ACTUAL="${GITHUB_REF_NAME}"
 
-          echo "Expected tag: $EXPECTED"
-          echo "Actual tag:   $ACTUAL"
+          echo "Metadata version : ${{ steps.version.outputs.version }}"
+          echo "Expected tag     : $EXPECTED"
+          echo "Actual tag       : $ACTUAL"
 
           if [ "$EXPECTED" != "$ACTUAL" ]; then
-            echo "Tag does not match metadata version."
+            echo "ERROR: Git tag does not match metadata.txt version."
             exit 1
           fi
+
 
       - name: Build plugin ZIP
         run: |
           python scripts/build_plugin.py
 
+
       - name: Generate plugins.xml
         run: |
           python scripts/generate_plugins_xml.py
 
-      - name: Verify artifacts
+
+      - name: Verify build files
         shell: bash
         run: |
+          echo "Generated files:"
           ls -lah dist/
 
-          test -f \
-            "dist/geofasu-${{ steps.version.outputs.version }}.zip"
+          test -f "dist/geofasu.zip"
+          test -f "dist/plugins.xml"
 
-          test -f \
-            "dist/plugins.xml"
+          echo "Build files verified."
+
+
+      - name: Verify ZIP structure
+        shell: bash
+        run: |
+          python - <<'PY'
+          import zipfile
+
+          path = "dist/geofasu.zip"
+
+          with zipfile.ZipFile(path, "r") as archive:
+              names = archive.namelist()
+
+              required = {
+                  "geofasu/__init__.py",
+                  "geofasu/metadata.txt",
+                  "geofasu/geofasu.py",
+              }
+
+              missing = required - set(names)
+
+              if missing:
+                  raise SystemExit(
+                      "ZIP missing required files:\n"
+                      + "\n".join(sorted(missing))
+                  )
+
+              roots = {
+                  name.split("/")[0]
+                  for name in names
+                  if name
+              }
+
+              if roots != {"geofasu"}:
+                  raise SystemExit(
+                      "Invalid ZIP root folder(s): "
+                      + ", ".join(sorted(roots))
+                  )
+
+          print("ZIP structure OK: geofasu/")
+          PY
+
+
+      - name: Verify plugins.xml
+        shell: bash
+        run: |
+          python - <<'PY'
+          import xml.etree.ElementTree as ET
+
+          tree = ET.parse("dist/plugins.xml")
+          root = tree.getroot()
+
+          plugin = root.find("pyqgis_plugin")
+
+          if plugin is None:
+              raise SystemExit(
+                  "plugins.xml does not contain pyqgis_plugin"
+              )
+
+          version = plugin.attrib.get("version", "").strip()
+
+          file_name = (
+              plugin.findtext(
+                  "file_name",
+                  default=""
+              ).strip()
+          )
+
+          download_url = (
+              plugin.findtext(
+                  "download_url",
+                  default=""
+              ).strip()
+          )
+
+          expected_version = "${{ steps.version.outputs.version }}"
+          expected_file = "geofasu.zip"
+
+          expected_url = (
+              "https://github.com/"
+              "Mackeeemacks/"
+              "GEOFASU-ROMBLON-GMU/"
+              "releases/download/"
+              f"v{expected_version}/"
+              "geofasu.zip"
+          )
+
+          print("Version      :", version)
+          print("File name    :", file_name)
+          print("Download URL :", download_url)
+
+          if version != expected_version:
+              raise SystemExit(
+                  f"Wrong plugin version: {version}"
+              )
+
+          if file_name != expected_file:
+              raise SystemExit(
+                  f"Wrong file_name: {file_name}"
+              )
+
+          if download_url != expected_url:
+              raise SystemExit(
+                  "Wrong download URL:\n"
+                  f"{download_url}\n\n"
+                  "Expected:\n"
+                  f"{expected_url}"
+              )
+
+          # QGIS derives the plugin folder/id from file_name.
+          plugin_id = file_name.partition(".")[0]
+
+          if plugin_id != "geofasu":
+              raise SystemExit(
+                  f"Invalid QGIS plugin ID: {plugin_id}"
+              )
+
+          print("plugins.xml validation passed.")
+          PY
+
 
       - name: Create GitHub Release
         env:
@@ -90,7 +218,7 @@ jobs:
         run: |
           gh release create \
             "${GITHUB_REF_NAME}" \
-            "dist/geofasu-${{ steps.version.outputs.version }}.zip" \
+            "dist/geofasu.zip" \
             "dist/plugins.xml" \
             --title "GEOFASU ${{ steps.version.outputs.version }}" \
             --notes "GEOFASU QGIS plugin release ${{ steps.version.outputs.version }}"
