@@ -11,7 +11,8 @@ from qgis.core import (
     QgsProject, QgsProcessingFeedback, QgsVectorFileWriter, QgsCoordinateReferenceSystem,
     QgsRasterLayer, QgsSnappingConfig, QgsTolerance
 )
-import os, re
+import os, re, shutil
+from pathlib import Path
 
 # Import scripts
 from .scripts.extract_psu import extract_by_psu
@@ -20,6 +21,7 @@ from .scripts.load_style_samples import load_style
 from .scripts.load_bgy import load_barangay_layer_smart
 from .scripts.clip_raster_by_bgy import clip_raster_by_bgy_memory
 from .scripts.qfield_package_inspector import inspect_current_project
+from .scripts.qfield_packager import package_current_project
 
 # Load UI
 FORM_CLASS, _ = uic.loadUiType(
@@ -38,6 +40,7 @@ class geofasuDialog(QDialog, FORM_CLASS):
         self.pbLoadSSU.clicked.connect(self.load_psu_list)
         self.pbGenerateGeometry.clicked.connect(self.generate_geometry)
         self.pbInspectQField.clicked.connect(self.inspect_qfield_project)
+        self.pbPackageQField.clicked.connect(self.package_qfield_project)
 
         self.cbpsu_list.currentIndexChanged.connect(self.update_selected_psu_paths)
         self.project_abbreviation.textChanged.connect(
@@ -49,7 +52,7 @@ class geofasuDialog(QDialog, FORM_CLASS):
         self.project_abbreviation.setMaxLength(20)
         self.project_abbreviation.setToolTip(
             "Short project code used in generated layer names, filenames, "
-            "project names and folders. Examples: LFS, CBMS, FIES."
+            "QGIS project names and folders. Examples: LFS, GATS, HSDV."
         )
 
         # Output path display-only
@@ -65,8 +68,11 @@ class geofasuDialog(QDialog, FORM_CLASS):
 
         self.pbPackageQField.setEnabled(False)
         self.pbPackageQField.setToolTip(
-            "Actual QField packaging will be enabled in Milestone 2."
+            "Inspect the current project first. Packaging is enabled "
+            "when no blocking errors are found."
         )
+
+        self._last_qfield_inspection = None
 
         self.tblQFieldLayers.setColumnCount(5)
         self.tblQFieldLayers.setHorizontalHeaderLabels([
@@ -175,7 +181,7 @@ class geofasuDialog(QDialog, FORM_CLASS):
             QMessageBox.critical(self, "Error", str(e))
 
     # =========================================================
-    # Project Abbreviation
+    # Project Abbreviation / Naming
     # =========================================================
     @staticmethod
     def normalize_project_abbreviation(value):
@@ -192,7 +198,7 @@ class geofasuDialog(QDialog, FORM_CLASS):
         if required and not code:
             raise ValueError(
                 "Enter a Project Abbreviation first. "
-                "Examples: LFS, CBMS, FIES."
+                "Examples: LFS, GATS, HSDV."
             )
 
         return code
@@ -212,6 +218,78 @@ class geofasuDialog(QDialog, FORM_CLASS):
 
         if self.cbpsu_list.currentIndex() >= 0:
             self.update_selected_psu_paths()
+
+    def build_project_key(self, year, round_number):
+        """
+        LFS is monthly:
+            2026_JAN_LFS
+            2026_FEB_LFS
+
+        Other projects do not include LFS round/month:
+            2026_GATS
+            2026_HSDV
+        """
+        project_code = self.current_project_abbreviation()
+        year = int(year)
+
+        if project_code == "LFS":
+            round_number = int(round_number)
+
+            if not 1 <= round_number <= 12:
+                raise ValueError(
+                    f"Invalid LFS round/month: {round_number}. "
+                    "Expected a value from 1 to 12."
+                )
+
+            month_abbr = self.month_name(round_number)[:3]
+            return f"{year}_{month_abbr}_{project_code}"
+
+        return f"{year}_{project_code}"
+
+    def build_project_rollout_root(
+        self,
+        province,
+        year,
+        round_number,
+    ):
+        """
+        LFS:
+            C:/PSA-GIS/ROMBLON/GEOFASU/2026/JANUARY
+
+        Other projects:
+            C:/PSA-GIS/ROMBLON/GEOFASU/2026/GATS
+            C:/PSA-GIS/ROMBLON/GEOFASU/2026/HSDV
+        """
+        project_code = self.current_project_abbreviation()
+        province = str(
+            province or "PROVINCE"
+        ).strip().upper()
+        year = int(year)
+
+        root = os.path.join(
+            "C:/PSA-GIS",
+            province,
+            "GEOFASU",
+            str(year),
+        )
+
+        if project_code == "LFS":
+            round_number = int(round_number)
+
+            if not 1 <= round_number <= 12:
+                raise ValueError(
+                    f"Invalid LFS round/month: {round_number}."
+                )
+
+            return os.path.join(
+                root,
+                self.month_name(round_number),
+            )
+
+        return os.path.join(
+            root,
+            project_code,
+        )
 
     # =========================================================
     # Selected PSU Path Builders
@@ -233,51 +311,54 @@ class geofasuDialog(QDialog, FORM_CLASS):
         year = int(data.get("Year", 0))
         rnd = int(data.get("Round", 0))
         psu_number = data.get("PSU_number")
-        prov = str(
+        province = str(
             data.get("Prov_name", "PROVINCE")
         ).strip().upper()
-        month_full = self.month_name(rnd)
 
-        geofasu_root = os.path.join(
-            "C:/PSA-GIS",
-            prov,
-            "GEOFASU",
-        )
-
-        # Keep the current LFS path convention unchanged.
-        if project_code == "LFS":
-            rollout_root = os.path.join(
-                geofasu_root,
-                str(year),
-                month_full,
+        try:
+            rollout_root = self.build_project_rollout_root(
+                province=province,
+                year=year,
+                round_number=rnd,
             )
-        else:
+        except Exception:
             rollout_root = os.path.join(
-                geofasu_root,
+                "C:/PSA-GIS",
+                province,
+                "GEOFASU",
+                str(year),
                 project_code,
-                str(year),
-                month_full,
             )
 
-        default_output_path = os.path.join(
-            rollout_root,
-            f"PSU_{psu_number}",
+        self.output_path.setText(
+            os.path.join(
+                rollout_root,
+                f"PSU_{psu_number}",
+            )
         )
 
-        qfield_package_path = os.path.join(
-            rollout_root,
-            "QField Packages",
-            f"PSU_{psu_number}",
+        self.qfield_package_path.setText(
+            os.path.join(
+                rollout_root,
+                "QField Packages",
+                f"PSU_{psu_number}",
+            )
         )
-
-        self.output_path.setText(default_output_path)
-        self.qfield_package_path.setText(qfield_package_path)
 
         self.tblQFieldLayers.setRowCount(0)
         self._last_qfield_inspection = None
         self.pbPackageQField.setEnabled(False)
+
+        try:
+            project_key = self.build_project_key(
+                year=year,
+                round_number=rnd,
+            )
+        except Exception:
+            project_key = project_code
+
         self.lblQFieldStatus.setText(
-            f"{project_code} project selected. Generate the PSU project, "
+            f"{project_key} selected. Generate the PSU project, "
             "then inspect it for QField package readiness."
         )
 
@@ -365,6 +446,11 @@ class geofasuDialog(QDialog, FORM_CLASS):
 
             self.tblQFieldLayers.resizeRowsToContents()
 
+            self._last_qfield_inspection = result
+            self.pbPackageQField.setEnabled(
+                result.error_count == 0
+            )
+
             if result.error_count > 0:
                 self.lblQFieldStatus.setText(
                     "Project inspection failed. "
@@ -439,7 +525,7 @@ class geofasuDialog(QDialog, FORM_CLASS):
             else:
                 message_parts.extend([
                     "",
-                    "Milestone 1 does not copy or convert files yet."
+                    "No blocking errors were found. Package for QField is now enabled."
                 ])
 
                 QMessageBox.information(
@@ -455,6 +541,195 @@ class geofasuDialog(QDialog, FORM_CLASS):
                 str(e)
             )
 
+
+    # =========================================================
+    # QField Milestone 2 — Package Current Project
+    # =========================================================
+    def package_qfield_project(self):
+        package_folder = self.qfield_package_path.text().strip()
+
+        if self.cbpsu_list.currentIndex() < 0:
+            QMessageBox.warning(
+                self,
+                "No PSU Selected",
+                "Select a PSU before creating a QField package."
+            )
+            return
+
+        current_project_file = str(
+            QgsProject.instance().fileName() or ""
+        ).strip()
+
+        if (
+            not current_project_file
+            or not os.path.isfile(current_project_file)
+        ):
+            QMessageBox.warning(
+                self,
+                "Project Not Saved",
+                "Generate or save the current PSU project before packaging."
+            )
+            return
+
+        if not package_folder:
+            QMessageBox.warning(
+                self,
+                "Missing Package Destination",
+                "Select a PSU first so the QField package destination "
+                "can be determined."
+            )
+            return
+
+        # Always run the latest inspection before packaging.
+        try:
+            inspection = inspect_current_project(
+                package_folder=package_folder,
+            )
+        except Exception as e:
+            QMessageBox.critical(
+                self,
+                "QField Inspection Error",
+                str(e)
+            )
+            return
+
+        if (
+            self.chkQFieldValidate.isChecked()
+            and inspection.error_count > 0
+        ):
+            self._last_qfield_inspection = inspection
+            self.pbPackageQField.setEnabled(False)
+
+            QMessageBox.warning(
+                self,
+                "QField Packaging Blocked",
+                "The current project has blocking QField package errors.\n\n"
+                "Run Inspect Current Project and resolve all red rows first."
+            )
+            return
+
+        package_path = Path(package_folder)
+
+        if (
+            package_path.exists()
+            and any(package_path.iterdir())
+        ):
+            answer = QMessageBox.question(
+                self,
+                "Replace Existing QField Package",
+                "The QField package folder already contains files:\n\n"
+                f"{package_folder}\n\n"
+                "Delete the existing package contents and create a new "
+                "package for this PSU?",
+                QMessageBox.Yes | QMessageBox.No,
+                QMessageBox.No,
+            )
+
+            if answer != QMessageBox.Yes:
+                return
+
+            try:
+                shutil.rmtree(package_path)
+            except OSError as exc:
+                QMessageBox.critical(
+                    self,
+                    "Cannot Replace QField Package",
+                    "The existing package folder could not be removed.\n\n"
+                    f"{package_folder}\n\n"
+                    f"Error:\n{exc}"
+                )
+                return
+
+        package_path.mkdir(
+            parents=True,
+            exist_ok=True,
+        )
+
+        QApplication.setOverrideCursor(
+            Qt.WaitCursor
+        )
+
+        progress = QProgressDialog(
+            "Creating QField package...",
+            "",
+            0,
+            0,
+            self,
+        )
+        progress.setWindowTitle(
+            "GEOFASU — QField Package"
+        )
+        progress.setWindowModality(
+            Qt.WindowModal
+        )
+        progress.setCancelButton(None)
+        progress.setMinimumDuration(0)
+        progress.show()
+
+        try:
+            canvas_extent = None
+
+            if (
+                self.cmbQFieldExtent.currentText()
+                == "Current map canvas"
+            ):
+                from qgis.utils import iface
+
+                canvas_extent = (
+                    iface.mapCanvas().extent()
+                )
+
+            result = package_current_project(
+                package_folder=package_folder,
+                extent_mode=(
+                    self.cmbQFieldExtent
+                    .currentText()
+                ),
+                canvas_extent=canvas_extent,
+                copy_styles_resources=(
+                    self.chkQFieldStyles
+                    .isChecked()
+                ),
+                preserve_snapping=(
+                    self.chkQFieldSnapping
+                    .isChecked()
+                ),
+                relative_paths=(
+                    self.chkQFieldRelativePaths
+                    .isChecked()
+                ),
+            )
+
+            self.lblQFieldStatus.setText(
+                "QField package created successfully. "
+                f"{len(result.packaged_layers)} layer(s) packaged."
+            )
+
+            QMessageBox.information(
+                self,
+                "QField Package Complete",
+                "The QField cable package was created successfully.\n\n"
+                f"Package folder:\n{result.package_folder}\n\n"
+                f"QField project:\n{result.packaged_project_file}\n\n"
+                f"Offline data:\n{result.offline_database}\n\n"
+                f"Manifest:\n{result.manifest_file}\n\n"
+                "Copy the complete PSU package folder to the QField device."
+            )
+
+            # The packager reloads the original desktop project.
+            # Re-inspect it so the UI reflects the restored project.
+            self.inspect_qfield_project()
+
+        except Exception as e:
+            QMessageBox.critical(
+                self,
+                "QField Packaging Error",
+                str(e)
+            )
+
+        finally:
+            progress.close()
+            QApplication.restoreOverrideCursor()
 
     # =========================================================
     # Remove Temporary Processing Layers
@@ -496,6 +771,47 @@ class geofasuDialog(QDialog, FORM_CLASS):
 
         if layer_ids_to_remove:
             project.removeMapLayers(layer_ids_to_remove)
+
+        return len(layer_ids_to_remove)
+
+    # =========================================================
+    # Remove Temporary Processing Layers
+    # =========================================================
+    @staticmethod
+    def remove_temporary_processing_layers():
+        """
+        Remove generic memory layers named "output" created by processing.
+        """
+        project = QgsProject.instance()
+        layer_ids_to_remove = []
+
+        for layer_id, layer in project.mapLayers().items():
+            try:
+                provider = str(
+                    layer.providerType() or ""
+                ).casefold()
+            except Exception:
+                provider = ""
+
+            try:
+                layer_name = str(
+                    layer.name() or ""
+                ).strip().casefold()
+            except Exception:
+                layer_name = ""
+
+            if (
+                provider == "memory"
+                and layer_name == "output"
+            ):
+                layer_ids_to_remove.append(
+                    layer_id
+                )
+
+        if layer_ids_to_remove:
+            project.removeMapLayers(
+                layer_ids_to_remove
+            )
 
         return len(layer_ids_to_remove)
 
@@ -592,18 +908,28 @@ class geofasuDialog(QDialog, FORM_CLASS):
             year = int(psu_data["Year"])
             rnd = int(psu_data["Round"])
             rep = psu_data.get("Replicate_Number")
+
             try:
                 rep = int(rep)
-            except:
+            except Exception:
                 rep = str(rep)
-            prov_name = str(psu_data["Prov_name"]).upper()
-            month_abbr = self.month_name(rnd)[:3]
+
+            prov_name = str(
+                psu_data["Prov_name"]
+            ).strip().upper()
+
+            project_key = self.build_project_key(
+                year=year,
+                round_number=rnd,
+            )
+
+            base_name = (
+                f"{project_key}_{prov_name}"
+                f"_SELECTED_SSU_R{rep}_PSU_{psu_number}"
+            )
 
             # --- Save project GeoPackage ---
-            filename = (
-                f"{year}_{month_abbr}_{project_code}_{prov_name}"
-                f"_SELECTED_SSU_R{rep}_PSU_{psu_number}.gpkg"
-            )
+            filename = f"{base_name}.gpkg"
             output_file = os.path.join(output_folder, filename)
 
             QgsVectorFileWriter.writeAsVectorFormat(
@@ -613,7 +939,7 @@ class geofasuDialog(QDialog, FORM_CLASS):
             # --- Load layers to keep references ---
             self.lfs_layer = QgsVectorLayer(output_file, filename, "ogr")
             self.lfs_layer.setCrs(QgsCoordinateReferenceSystem("EPSG:4326"))
-            self.lfs_layer.setName(os.path.splitext(filename)[0])
+            self.lfs_layer.setName(base_name)
 
             # Snapping config
             snap_cfg = QgsProject.instance().snappingConfig()
@@ -694,11 +1020,13 @@ class geofasuDialog(QDialog, FORM_CLASS):
             # -------------------------------------------------
             removed_temp_layers = self.remove_temporary_processing_layers()
 
+            # -------------------------------------------------
+            # Remove generic temporary processing layers
+            # -------------------------------------------------
+            removed_temp_layers = self.remove_temporary_processing_layers()
+
             # --- Save QGIS Project ---
-            project_filename = (
-                f"{year}_{month_abbr}_{project_code}_{prov_name}"
-                f"_SELECTED_SSU_R{rep}_PSU_{psu_number}.qgs"
-            )
+            project_filename = f"{base_name}.qgs"
             self.generated_project_path = os.path.join(output_folder, project_filename)
             QgsProject.instance().setCrs(QgsCoordinateReferenceSystem("EPSG:4326"))
             QgsProject.instance().write(self.generated_project_path)
@@ -714,7 +1042,7 @@ class geofasuDialog(QDialog, FORM_CLASS):
             QMessageBox.information(
                 self,
                 "Done",
-                f"{project_code} PSU geometry and QGIS project were generated successfully.\n\n"
+                f"{project_key} PSU geometry and QGIS project were generated successfully.\n\n"
                 f"GeoPackage:\n{output_file}\n\n"
                 f"QGIS project:\n{self.generated_project_path}\n\n"
                 "QField package readiness was also inspected."

@@ -10,6 +10,18 @@ ROOT = Path(__file__).resolve().parent.parent
 PLUGIN_DIR = ROOT / "geofasu"
 DIST_DIR = ROOT / "dist"
 
+# IMPORTANT:
+# QGIS determines the repository plugin ID from the portion of
+# <file_name> before the FIRST period.
+#
+# Therefore:
+#
+#     geofasu-2.0.6.zip -> plugin ID "geofasu-2"   WRONG
+#     geofasu.zip       -> plugin ID "geofasu"     CORRECT
+#
+PLUGIN_ZIP_NAME = "geofasu.zip"
+
+
 EXCLUDED_DIRS = {
     "__pycache__",
     ".git",
@@ -27,15 +39,18 @@ EXCLUDED_SUFFIXES = {
 
 
 def read_version() -> str:
-    metadata = PLUGIN_DIR / "metadata.txt"
+    metadata_path = PLUGIN_DIR / "metadata.txt"
 
-    if not metadata.is_file():
+    if not metadata_path.is_file():
         raise FileNotFoundError(
-            f"metadata.txt not found: {metadata}"
+            f"metadata.txt not found:\n{metadata_path}"
         )
 
     config = configparser.ConfigParser()
-    config.read(metadata, encoding="utf-8")
+    config.read(
+        metadata_path,
+        encoding="utf-8",
+    )
 
     version = config.get(
         "general",
@@ -67,36 +82,48 @@ def should_include(path: Path) -> bool:
 
 
 def validate_plugin():
-    required = [
+    required_files = [
         PLUGIN_DIR / "__init__.py",
         PLUGIN_DIR / "metadata.txt",
         PLUGIN_DIR / "geofasu.py",
     ]
 
     missing = [
-        str(path)
-        for path in required
+        path
+        for path in required_files
         if not path.is_file()
     ]
 
     if missing:
         raise RuntimeError(
-            "Required plugin files are missing:\n"
-            + "\n".join(missing)
+            "Required plugin files are missing:\n\n"
+            + "\n".join(str(path) for path in missing)
         )
+
+
+def validate_metadata_version(version: str):
+    if not version:
+        raise RuntimeError(
+            "Plugin version cannot be blank."
+        )
+
+    print(f"Plugin version : {version}")
+    print(f"Plugin ID      : geofasu")
+    print(f"Release ZIP    : {PLUGIN_ZIP_NAME}")
 
 
 def build_zip() -> Path:
     validate_plugin()
 
     version = read_version()
+    validate_metadata_version(version)
 
     DIST_DIR.mkdir(
         parents=True,
         exist_ok=True,
     )
 
-    output = DIST_DIR / f"geofasu-{version}.zip"
+    output = DIST_DIR / PLUGIN_ZIP_NAME
 
     if output.exists():
         output.unlink()
@@ -117,6 +144,11 @@ def build_zip() -> Path:
             if not should_include(file_path):
                 continue
 
+            # CRITICAL:
+            # The ZIP must contain one top-level folder named exactly:
+            #
+            #     geofasu/
+            #
             archive_name = (
                 Path("geofasu")
                 / file_path.relative_to(PLUGIN_DIR)
@@ -127,15 +159,26 @@ def build_zip() -> Path:
                 archive_name.as_posix(),
             )
 
-    with zipfile.ZipFile(output, "r") as archive:
+    # ---------------------------------------------------------
+    # Validate ZIP
+    # ---------------------------------------------------------
+
+    with zipfile.ZipFile(
+        output,
+        "r",
+    ) as archive:
+
         bad_file = archive.testzip()
 
         if bad_file is not None:
             raise RuntimeError(
-                f"ZIP integrity check failed: {bad_file}"
+                "ZIP integrity check failed:\n"
+                f"{bad_file}"
             )
 
-        names = set(archive.namelist())
+        members = set(
+            archive.namelist()
+        )
 
         required_members = {
             "geofasu/__init__.py",
@@ -143,15 +186,42 @@ def build_zip() -> Path:
             "geofasu/geofasu.py",
         }
 
-        missing_members = required_members - names
+        missing_members = (
+            required_members - members
+        )
 
         if missing_members:
             raise RuntimeError(
-                "ZIP is missing required members:\n"
-                + "\n".join(sorted(missing_members))
+                "ZIP is missing required plugin files:\n\n"
+                + "\n".join(
+                    sorted(missing_members)
+                )
             )
 
-    print(f"Created: {output}")
+        # Make sure metadata isn't accidentally at ZIP root.
+        if "metadata.txt" in members:
+            raise RuntimeError(
+                "Invalid ZIP structure.\n\n"
+                "metadata.txt must be inside:\n"
+                "geofasu/metadata.txt"
+            )
+
+    print()
+    print("=" * 70)
+    print("GEOFASU PLUGIN BUILD COMPLETE")
+    print("=" * 70)
+    print(f"Version : {version}")
+    print(f"ZIP     : {output}")
+    print()
+    print("Expected ZIP structure:")
+    print()
+    print("geofasu.zip")
+    print("└── geofasu/")
+    print("    ├── __init__.py")
+    print("    ├── metadata.txt")
+    print("    ├── geofasu.py")
+    print("    └── ...")
+    print()
 
     return output
 
@@ -162,7 +232,7 @@ if __name__ == "__main__":
 
     except Exception as exc:
         print(
-            f"BUILD FAILED: {exc}",
+            f"\nBUILD FAILED:\n{exc}",
             file=sys.stderr,
         )
         raise
