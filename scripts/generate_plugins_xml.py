@@ -117,7 +117,7 @@ def generate_plugins_xml() -> Path:
         "Vector",
     )
 
-    zip_name = f"geofasu-{version}.zip"
+    zip_name = f"geofasu.zip"
 
     download_url = (
         f"https://github.com/"
