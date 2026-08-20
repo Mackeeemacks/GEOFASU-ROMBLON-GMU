@@ -42,18 +42,47 @@ from .scripts.refactor import build_refactor_params
 GEOID_COLUMN_INDEX = 0  # Excel column A
 
 
-from .scripts.csdbe_merge import (
-    build_csdbe_password_candidates,
-    build_expected_csdbe_names,
-    find_csconcat_executable,
-    merge_csdbe_files_with_password_fallback,
-    open_csdbe_for_dictionary_export,
-    validate_csdbe_files,
+from .scripts.sensitive_loader import (
+    get_csdbe_merge_module,
+    get_csdbe_export_module,
 )
 
-from .scripts.csdbe_export import (
-    export_csdbe_to_csv,
-    find_csexport_executable,
+
+_csdbe_merge = get_csdbe_merge_module()
+_csdbe_export = get_csdbe_export_module()
+
+
+build_csdbe_password_candidates = (
+    _csdbe_merge.build_csdbe_password_candidates
+)
+
+build_expected_csdbe_names = (
+    _csdbe_merge.build_expected_csdbe_names
+)
+
+find_csconcat_executable = (
+    _csdbe_merge.find_csconcat_executable
+)
+
+merge_csdbe_files_with_password_fallback = (
+    _csdbe_merge.merge_csdbe_files_with_password_fallback
+)
+
+open_csdbe_for_dictionary_export = (
+    _csdbe_merge.open_csdbe_for_dictionary_export
+)
+
+validate_csdbe_files = (
+    _csdbe_merge.validate_csdbe_files
+)
+
+
+export_csdbe_to_csv = (
+    _csdbe_export.export_csdbe_to_csv
+)
+
+find_csexport_executable = (
+    _csdbe_export.find_csexport_executable
 )
 
 from .scripts.household_update_validation import (
