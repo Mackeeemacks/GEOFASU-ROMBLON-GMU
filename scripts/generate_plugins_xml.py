@@ -13,6 +13,8 @@ DIST_DIR = ROOT / "dist"
 OWNER = "Mackeeemacks"
 REPOSITORY = "GEOFASU-ROMBLON-GMU"
 
+PLUGIN_ZIP_NAME = "geofasu.zip"
+
 
 def metadata_value(config, key, default=""):
     return config.get(
@@ -38,6 +40,7 @@ def generate_plugins_xml() -> Path:
         )
 
     config = configparser.ConfigParser()
+
     config.read(
         metadata_path,
         encoding="utf-8",
@@ -117,14 +120,12 @@ def generate_plugins_xml() -> Path:
         "Vector",
     )
 
-    zip_name = f"geofasu.zip"
-
     download_url = (
         f"https://github.com/"
         f"{OWNER}/{REPOSITORY}"
         f"/releases/download/"
         f"v{version}/"
-        f"{zip_name}"
+        f"{PLUGIN_ZIP_NAME}"
     )
 
     xml = f"""<?xml version="1.0" encoding="UTF-8"?>
@@ -156,7 +157,7 @@ def generate_plugins_xml() -> Path:
     <category>{xml_escape(category)}</category>
     <tags>{xml_escape(tags)}</tags>
 
-    <file_name>{xml_escape(zip_name)}</file_name>
+    <file_name>{PLUGIN_ZIP_NAME}</file_name>
     <download_url>{xml_escape(download_url)}</download_url>
 
     <experimental>False</experimental>
@@ -178,7 +179,13 @@ def generate_plugins_xml() -> Path:
         encoding="utf-8",
     )
 
-    print(f"Created: {output}")
+    print("=" * 70)
+    print("GEOFASU QGIS PLUGIN REPOSITORY")
+    print("=" * 70)
+    print(f"Version      : {version}")
+    print(f"Plugin ZIP   : {PLUGIN_ZIP_NAME}")
+    print(f"Download URL : {download_url}")
+    print(f"XML Output   : {output}")
 
     return output
 
