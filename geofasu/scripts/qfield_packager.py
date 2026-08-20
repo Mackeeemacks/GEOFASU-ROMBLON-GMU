@@ -5,7 +5,7 @@ GEOFASU QField cable package engine.
 Milestone 2:
 - Packages the current saved PSU project into:
     ...\QField Packages\PSU_<n>
-- Converts the generated selected-SSU LFS layer to offline data.gpkg.
+- Converts the generated selected-SSU project layer to offline data.gpkg.
 - Copies vector reference datasets read-only.
 - Copies raster/basemap datasets and common sidecar files.
 - Saves a portable relative-path QGIS project.
@@ -592,7 +592,7 @@ def package_current_project(
 
         if not offline_layers:
             raise RuntimeError(
-                "No generated SELECTED_SSU LFS layer was found for "
+                "No generated SELECTED_SSU project layer was found for "
                 "offline editing."
             )
 

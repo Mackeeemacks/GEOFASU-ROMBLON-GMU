@@ -41,7 +41,7 @@ QLabel#lblQFieldStatus{padding:8px 10px;border:1px solid #bfdbfe;border-radius:6
    <item>
     <widget class="QLabel" name="label_header">
      <property name="text">
-      <string>&lt;h2&gt;GEOFASU Pre-Processing&lt;/h2&gt;&lt;p&gt;Prepare LFS sample geometry, PSU project outputs, and future QField field packages.&lt;/p&gt;</string>
+      <string>&lt;h2&gt;GEOFASU Pre-Processing&lt;/h2&gt;&lt;p&gt;Prepare sample geometry, project-specific PSU outputs, and QField field packages.&lt;/p&gt;</string>
      </property>
     </widget>
    </item>
@@ -65,10 +65,51 @@ QLabel#lblQFieldStatus{padding:8px 10px;border:1px solid #bfdbfe;border-radius:6
         <widget class="QGroupBox" name="group_ssu">
          <property name="title"><string>1 — PSU Master List</string></property>
          <layout class="QGridLayout" name="grid_ssu">
-          <item row="0" column="0"><widget class="QLabel" name="label_excel"><property name="text"><string>Sample Excel:</string></property></widget></item>
-          <item row="0" column="1"><widget class="QLineEdit" name="ssu_list_path"><property name="placeholderText"><string>Select the LFS sample workbook…</string></property></widget></item>
-          <item row="0" column="2"><widget class="QPushButton" name="pbBrowseExcel"><property name="text"><string>Browse…</string></property></widget></item>
-          <item row="1" column="2"><widget class="QPushButton" name="pbLoadSSU"><property name="text"><string>Read Sample List</string></property></widget></item>
+          <property name="horizontalSpacing"><number>10</number></property>
+          <property name="verticalSpacing"><number>8</number></property>
+
+          <item row="0" column="0">
+           <widget class="QLabel" name="label_project_abbreviation">
+            <property name="text"><string>Project abbreviation:</string></property>
+           </widget>
+          </item>
+          <item row="0" column="1">
+           <widget class="QLineEdit" name="project_abbreviation">
+            <property name="text"><string>LFS</string></property>
+            <property name="placeholderText"><string>Examples: LFS, CBMS, FIES</string></property>
+            <property name="maxLength"><number>20</number></property>
+           </widget>
+          </item>
+          <item row="0" column="2">
+           <widget class="QLabel" name="label_project_hint">
+            <property name="text"><string>Used in generated names and paths</string></property>
+            <property name="styleSheet">
+             <string notr="true">color:#64748b; font-style:italic;</string>
+            </property>
+           </widget>
+          </item>
+
+          <item row="1" column="0">
+           <widget class="QLabel" name="label_excel">
+            <property name="text"><string>Sample Excel:</string></property>
+           </widget>
+          </item>
+          <item row="1" column="1">
+           <widget class="QLineEdit" name="ssu_list_path">
+            <property name="placeholderText"><string>Select the sample workbook…</string></property>
+           </widget>
+          </item>
+          <item row="1" column="2">
+           <widget class="QPushButton" name="pbBrowseExcel">
+            <property name="text"><string>Browse…</string></property>
+           </widget>
+          </item>
+          <item row="2" column="2">
+           <widget class="QPushButton" name="pbLoadSSU">
+            <property name="text"><string>Read Sample List</string></property>
+           </widget>
+          </item>
+
           <columnstretch>0,1,0</columnstretch>
          </layout>
         </widget>
