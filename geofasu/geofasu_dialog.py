@@ -55,6 +55,14 @@ class geofasuDialog(QDialog, FORM_CLASS):
             "QGIS project names and folders. Examples: LFS, GATS, HSDV."
         )
 
+        # Basemap extraction/loading is optional.
+        self.chkLoadBasemap.setChecked(True)
+        self.chkLoadBasemap.setToolTip(
+            "When enabled, GEOFASU clips/extracts the basemap using the "
+            "barangay boundary and loads it into the generated project. "
+            "When disabled, raster processing is skipped entirely."
+        )
+
         # Output path display-only
         self.output_path.setReadOnly(True)
         self.output_path.setToolTip(
@@ -954,17 +962,50 @@ class geofasuDialog(QDialog, FORM_CLASS):
             # =================================================
             # Load Barangay layer
             # =================================================
-            bgy_layer = load_barangay_layer_smart(self.lfs_layer, geoid_prefix=geoid_prefix, output_folder=output_folder)
-            clipped_raster = None
+            self.bgy_layer = None
+            self.clipped_raster = None
+
+            bgy_layer = load_barangay_layer_smart(
+                self.lfs_layer,
+                geoid_prefix=geoid_prefix,
+                output_folder=output_folder,
+            )
+
             if bgy_layer:
                 self.bgy_layer = bgy_layer
                 self.bgy_layer.setName("BARANGAY BOUNDARY")
-                self.bgy_layer.setCrs(QgsCoordinateReferenceSystem("EPSG:4326"))
-                try:
-                    clipped_raster = clip_raster_by_bgy_memory(bgy_layer, geoid_prefix, output_folder)
-                    self.clipped_raster = clipped_raster
-                except Exception as e:
-                    QMessageBox.warning(self, "Raster Clip", f"Could not clip raster:\n{str(e)}")
+                self.bgy_layer.setCrs(
+                    QgsCoordinateReferenceSystem("EPSG:4326")
+                )
+
+                # =============================================
+                # Optional Basemap Extraction / Loading
+                # =============================================
+                if self.chkLoadBasemap.isChecked():
+                    try:
+                        clipped_raster = clip_raster_by_bgy_memory(
+                            bgy_layer,
+                            geoid_prefix,
+                            output_folder,
+                        )
+
+                        if (
+                            clipped_raster
+                            and clipped_raster.isValid()
+                        ):
+                            self.clipped_raster = clipped_raster
+
+                    except Exception as e:
+                        QMessageBox.warning(
+                            self,
+                            "Raster Clip",
+                            "Could not extract/load the basemap.\n\n"
+                            f"{str(e)}"
+                        )
+                else:
+                    # Explicitly keep it None so a raster from a previously
+                    # processed PSU can never leak into the current project.
+                    self.clipped_raster = None
 
             # =================================================
             # Apply Styles
@@ -981,27 +1022,60 @@ class geofasuDialog(QDialog, FORM_CLASS):
             # Layer Groups
             # =================================================
             root = QgsProject.instance().layerTreeRoot()
+
             project_group_name = f"{project_code} Layers"
             lfs_group = (
                 root.findGroup(project_group_name)
                 or root.addGroup(project_group_name)
             )
-            base_group = root.findGroup("Base Layer") or root.addGroup("Base Layer")
-            basemap_group = root.findGroup("Basemap") or root.addGroup("Basemap")
+
+            base_group = (
+                root.findGroup("Base Layer")
+                or root.addGroup("Base Layer")
+            )
 
             if self.lfs_layer.isValid():
-                QgsProject.instance().addMapLayer(self.lfs_layer, False)
-                node = lfs_group.addLayer(self.lfs_layer)
+                QgsProject.instance().addMapLayer(
+                    self.lfs_layer,
+                    False
+                )
+                node = lfs_group.addLayer(
+                    self.lfs_layer
+                )
                 node.setExpanded(False)
 
-            if self.bgy_layer and self.bgy_layer.isValid():
-                QgsProject.instance().addMapLayer(self.bgy_layer, False)
-                node = base_group.addLayer(self.bgy_layer)
+            if (
+                self.bgy_layer
+                and self.bgy_layer.isValid()
+            ):
+                QgsProject.instance().addMapLayer(
+                    self.bgy_layer,
+                    False
+                )
+                node = base_group.addLayer(
+                    self.bgy_layer
+                )
                 node.setExpanded(False)
 
-            if self.clipped_raster and self.clipped_raster.isValid():
-                QgsProject.instance().addMapLayer(self.clipped_raster, False)
-                node = basemap_group.addLayer(self.clipped_raster)
+            # Do not even create the Basemap group when the option is off.
+            if (
+                self.chkLoadBasemap.isChecked()
+                and self.clipped_raster
+                and self.clipped_raster.isValid()
+            ):
+                basemap_group = (
+                    root.findGroup("Basemap")
+                    or root.addGroup("Basemap")
+                )
+
+                QgsProject.instance().addMapLayer(
+                    self.clipped_raster,
+                    False
+                )
+
+                node = basemap_group.addLayer(
+                    self.clipped_raster
+                )
                 node.setItemVisibilityChecked(False)
                 node.setExpanded(False)
 
@@ -1010,20 +1084,22 @@ class geofasuDialog(QDialog, FORM_CLASS):
             combined_extent = self.lfs_layer.extent()
             if self.bgy_layer:
                 combined_extent.combineExtentWith(self.bgy_layer.extent())
-            if self.clipped_raster:
-                combined_extent.combineExtentWith(self.clipped_raster.extent())
+            if (
+                self.clipped_raster
+                and self.clipped_raster.isValid()
+            ):
+                combined_extent.combineExtentWith(
+                    self.clipped_raster.extent()
+                )
             iface.mapCanvas().setExtent(combined_extent)
             iface.mapCanvas().refresh()
 
             # -------------------------------------------------
             # Remove temporary processing memory layers
             # -------------------------------------------------
-            removed_temp_layers = self.remove_temporary_processing_layers()
-
-            # -------------------------------------------------
-            # Remove generic temporary processing layers
-            # -------------------------------------------------
-            removed_temp_layers = self.remove_temporary_processing_layers()
+            removed_temp_layers = (
+                self.remove_temporary_processing_layers()
+            )
 
             # --- Save QGIS Project ---
             project_filename = f"{base_name}.qgs"
@@ -1045,7 +1121,20 @@ class geofasuDialog(QDialog, FORM_CLASS):
                 f"{project_key} PSU geometry and QGIS project were generated successfully.\n\n"
                 f"GeoPackage:\n{output_file}\n\n"
                 f"QGIS project:\n{self.generated_project_path}\n\n"
-                "QField package readiness was also inspected."
+                + (
+                    "Basemap: extracted and loaded.\n\n"
+                    if (
+                        self.chkLoadBasemap.isChecked()
+                        and self.clipped_raster
+                        and self.clipped_raster.isValid()
+                    )
+                    else (
+                        "Basemap: skipped by user.\n\n"
+                        if not self.chkLoadBasemap.isChecked()
+                        else "Basemap: not available.\n\n"
+                    )
+                )
+                + "QField package readiness was also inspected."
                 + (
                     f"\n\nTemporary processing layers removed: "
                     f"{removed_temp_layers}"

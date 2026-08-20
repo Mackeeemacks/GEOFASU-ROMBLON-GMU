@@ -1,27 +1,31 @@
-2.0.3
-- Replaced focus/keystroke dictionary export with unattended Win32 menu/dialog automation.
-- Dictionary export now requires no user keyboard or mouse interaction.
-- Added direct validation of the generated DCF file and clearer dictionary-stage diagnostics.
-- Preserved rollout CADCS credential discovery, CSDBE validation/merge/export, and all GeoPackage workflows.
+# GEOFASU Changelog
 
-GEOFASU 2.0.2
-==============
-- Fixed CADCS.pen UTF-16LE string scanner that was double-escaped in 2.0.1.
-- Added ASCII/single-byte fallback scanning for future CADCS rollouts.
-- Ranks credentials containing the current YYMM rollout token first.
-- Validates discovered rollout credentials against the first real CSDBE during automated dictionary extraction.
-- Tries discovered candidates sequentially before declaring authentication failure.
-- Keeps password values out of UI messages and user-facing logs.
-- Preserves all existing GeoPackage, CSV, UPDCODE, and validation workflows.
+All notable changes to GEOFASU are documented in this file.
 
-GEOFASU 2.0.0
+## [2.1.0] - 2026-08-20
 
-- Targeted for QGIS 3.40.x / Windows x64.
-- Added current-rollout CADCS.pen import.
-- Removed manual CSDBE password entry.
-- Added automatic rollout credential discovery.
-- Automated embedded dictionary extraction through CSPro 7.7 Data Viewer.
-- Production CSDBE validation now requires every expected sample file when enabled.
-- GeoPackage discovery now searches FIELD VALIDATION OUTPUT\GEOPACKAGES recursively.
-- Preserved CSV household UPDCODE matching and QGIS diagnostic layers.
-- Refreshed Post-Process UI and status messages.
+### Added
+- Added an **Extract and load basemap** checkbox to the Pre-Process workflow.
+- Basemap extraction and loading can now be enabled or disabled per PSU before generating geometry.
+
+### Changed
+- Basemap processing is now optional instead of always running.
+- When basemap extraction is disabled, GEOFASU:
+  - skips raster clipping/extraction;
+  - does not load a BASEMAP raster layer;
+  - does not create the Basemap layer group;
+  - does not include a basemap raster in the generated QField package.
+- Barangay boundary loading remains independent of the basemap option.
+- Existing behavior is preserved by keeping **Extract and load basemap** enabled by default.
+- Removed duplicate temporary processing-layer cleanup in the Pre-Process workflow.
+
+## [2.0.9] - Previous Release
+
+### Changed
+- Previous published GEOFASU release.
+- Added generalized project processing and naming support beyond LFS.
+- LFS retains year/month/project naming such as `2026_JAN_LFS` and `2026_FEB_LFS`.
+- Non-LFS projects use year/project naming without the LFS round/month, such as `2026_GATS` and `2026_HSDV`.
+- Project abbreviation is inherited by generated layer names, GeoPackage filenames, QGIS project filenames, output paths, and QField package paths.
+- Integrated project inspection and QField packaging into the Pre-Process workflow.
+- QGIS repository package uses the stable `geofasu.zip` filename for plugin installation and updates.
