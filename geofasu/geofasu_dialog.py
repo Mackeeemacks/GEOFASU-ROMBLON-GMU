@@ -745,50 +745,11 @@ class geofasuDialog(QDialog, FORM_CLASS):
     @staticmethod
     def remove_temporary_processing_layers():
         """
-        Remove temporary memory layers created by processing algorithms.
+        Remove generic temporary memory layers named "output" created by
+        QGIS Processing.
 
-        GEOFASU's final project should contain only persistent/intentional
-        layers such as:
-            - the generated LFS GeoPackage layer
-            - BARANGAY BOUNDARY
-            - BASEMAP
-
-        Processing may temporarily register generic memory layers named
-        "output". These must not be saved into the PSU project or considered
-        during QField packaging.
-        """
-        project = QgsProject.instance()
-
-        layer_ids_to_remove = []
-
-        for layer_id, layer in project.mapLayers().items():
-            try:
-                provider = str(layer.providerType() or "").casefold()
-            except Exception:
-                provider = ""
-
-            try:
-                layer_name = str(layer.name() or "").strip().casefold()
-            except Exception:
-                layer_name = ""
-
-            # Only remove generic temporary processing outputs.
-            # Do not remove intentionally named memory layers.
-            if provider == "memory" and layer_name == "output":
-                layer_ids_to_remove.append(layer_id)
-
-        if layer_ids_to_remove:
-            project.removeMapLayers(layer_ids_to_remove)
-
-        return len(layer_ids_to_remove)
-
-    # =========================================================
-    # Remove Temporary Processing Layers
-    # =========================================================
-    @staticmethod
-    def remove_temporary_processing_layers():
-        """
-        Remove generic memory layers named "output" created by processing.
+        Only generic temporary layers are removed. Intentionally named
+        memory layers are left untouched.
         """
         project = QgsProject.instance()
         layer_ids_to_remove = []
@@ -824,9 +785,125 @@ class geofasuDialog(QDialog, FORM_CLASS):
         return len(layer_ids_to_remove)
 
     # =========================================================
+    # Prepare New QGIS Project for Selected PSU
+    # =========================================================
+    def prepare_project_for_generation(self):
+        """
+        Prepare a completely clean QGIS project before generating a PSU.
+
+        GEOFASU uses one independent QGIS project per PSU. When the user
+        generates another PSU, layers/groups from the previously generated
+        PSU must never be carried into the new project.
+
+        If the current project contains unsaved changes, the user may save,
+        discard, or cancel before the project is cleared.
+
+        Returns:
+            True  - generation may continue.
+            False - generation was cancelled.
+        """
+        project = QgsProject.instance()
+
+        current_project_file = str(
+            project.fileName() or ""
+        ).strip()
+
+        # -----------------------------------------------------
+        # Protect unsaved changes in the current project.
+        # -----------------------------------------------------
+        if project.isDirty() and project.mapLayers():
+            current_name = (
+                os.path.basename(current_project_file)
+                if current_project_file
+                else "Untitled Project"
+            )
+
+            answer = QMessageBox.question(
+                self,
+                "Start New PSU Project",
+                "The current QGIS project contains unsaved changes.\n\n"
+                f"Current project:\n{current_name}\n\n"
+                "Save the current project before generating the selected PSU?\n\n"
+                "Yes = Save and continue\n"
+                "No = Discard changes and continue\n"
+                "Cancel = Keep the current project and stop generation",
+                QMessageBox.Yes
+                | QMessageBox.No
+                | QMessageBox.Cancel,
+                QMessageBox.Yes,
+            )
+
+            if answer == QMessageBox.Cancel:
+                return False
+
+            if answer == QMessageBox.Yes:
+                if not current_project_file:
+                    save_path, _ = QFileDialog.getSaveFileName(
+                        self,
+                        "Save Current QGIS Project",
+                        "",
+                        "QGIS Project (*.qgs *.qgz)",
+                    )
+
+                    if not save_path:
+                        return False
+
+                    current_project_file = save_path
+
+                if not project.write(
+                    current_project_file
+                ):
+                    QMessageBox.critical(
+                        self,
+                        "Save Failed",
+                        "The current QGIS project could not be saved.\n\n"
+                        f"{current_project_file}"
+                    )
+                    return False
+
+        # -----------------------------------------------------
+        # Release Python references to old PSU layers.
+        # -----------------------------------------------------
+        self.lfs_layer = None
+        self.bgy_layer = None
+        self.clipped_raster = None
+        self.generated_project_path = None
+
+        # The inspection belongs to the previous project.
+        self._last_qfield_inspection = None
+        self.tblQFieldLayers.setRowCount(0)
+        self.pbPackageQField.setEnabled(False)
+
+        # -----------------------------------------------------
+        # Clear the active QGIS project.
+        # This creates the blank project which the new PSU will populate.
+        # -----------------------------------------------------
+        try:
+            project.setDirty(False)
+        except Exception:
+            pass
+
+        project.clear()
+
+        project.setCrs(
+            QgsCoordinateReferenceSystem(
+                "EPSG:4326"
+            )
+        )
+
+        self.lblQFieldStatus.setText(
+            "New PSU project started. Generating geometry..."
+        )
+
+        return True
+
+    # =========================================================
     # Generate Geometry
     # =========================================================
     def generate_geometry(self):
+        # -----------------------------------------------------
+        # Validate project abbreviation
+        # -----------------------------------------------------
         try:
             project_code = self.current_project_abbreviation()
         except ValueError as exc:
@@ -837,20 +914,110 @@ class geofasuDialog(QDialog, FORM_CLASS):
             )
             return
 
-        path = self.ssu_list_path.text()
+        # -----------------------------------------------------
+        # Validate sample workbook
+        # -----------------------------------------------------
+        path = self.ssu_list_path.text().strip()
+
         if not path:
-            QMessageBox.warning(self, "Missing File", "Select Excel file first.")
+            QMessageBox.warning(
+                self,
+                "Missing File",
+                "Select Excel file first."
+            )
             return
 
-        output_folder = self.output_path.text()
+        if not os.path.isfile(path):
+            QMessageBox.warning(
+                self,
+                "Missing File",
+                "The selected Excel file does not exist.\n\n"
+                f"{path}"
+            )
+            return
+
+        # -----------------------------------------------------
+        # Capture selected PSU BEFORE clearing the old project
+        # -----------------------------------------------------
+        idx = self.cbpsu_list.currentIndex()
+
+        if idx < 0:
+            QMessageBox.warning(
+                self,
+                "No PSU Selected",
+                "Select a PSU before generating geometry."
+            )
+            return
+
+        psu_data = self.cbpsu_list.itemData(idx)
+
+        if not psu_data:
+            QMessageBox.warning(
+                self,
+                "Invalid PSU",
+                "The selected PSU does not contain valid PSU information."
+            )
+            return
+
+        psu_number = psu_data.get(
+            "PSU_number"
+        )
+
+        if psu_number is None:
+            QMessageBox.warning(
+                self,
+                "Invalid PSU",
+                "The selected PSU does not contain a PSU number."
+            )
+            return
+
+        geoid_prefix = psu_data.get(
+            "Geoid_prefix"
+        )
+
+        # -----------------------------------------------------
+        # Validate the PSU-specific output folder
+        # -----------------------------------------------------
+        output_folder = self.output_path.text().strip()
+
         if not output_folder:
-            QMessageBox.warning(self, "Missing Output Folder", "Select output folder first.")
+            QMessageBox.warning(
+                self,
+                "Missing Output Folder",
+                "The selected PSU output folder could not be determined."
+            )
             return
-        os.makedirs(output_folder, exist_ok=True)
 
-        QApplication.setOverrideCursor(Qt.WaitCursor)
-        progress = QProgressDialog("Processing...", "Cancel", 0, 0, self)
-        progress.setWindowModality(Qt.WindowModal)
+        os.makedirs(
+            output_folder,
+            exist_ok=True
+        )
+
+        # -----------------------------------------------------
+        # IMPORTANT:
+        # Start a completely clean QGIS project for this PSU.
+        # -----------------------------------------------------
+        if not self.prepare_project_for_generation():
+            return
+
+        QApplication.setOverrideCursor(
+            Qt.WaitCursor
+        )
+
+        progress = QProgressDialog(
+            f"Generating PSU_{psu_number}...",
+            "",
+            0,
+            0,
+            self
+        )
+        progress.setWindowTitle(
+            "GEOFASU — Generate Geometry"
+        )
+        progress.setWindowModality(
+            Qt.WindowModal
+        )
+        progress.setCancelButton(None)
         progress.setMinimumDuration(0)
         progress.show()
 
@@ -900,15 +1067,6 @@ class geofasuDialog(QDialog, FORM_CLASS):
                     main_dp.addFeature(nf)
 
             main_layer.updateExtents()
-
-            idx = self.cbpsu_list.currentIndex()
-            if idx < 0:
-                QMessageBox.warning(self, "No PSU selected", "Select a PSU.")
-                return
-
-            psu_data = self.cbpsu_list.itemData(idx)
-            psu_number = psu_data["PSU_number"]
-            geoid_prefix = psu_data.get("Geoid_prefix")
 
             filtered_layer = extract_by_psu(main_layer, psu_number, feedback)
             refactored_layer = refactor_psu_layer(filtered_layer, context=None, feedback=feedback)
@@ -1101,12 +1259,36 @@ class geofasuDialog(QDialog, FORM_CLASS):
                 self.remove_temporary_processing_layers()
             )
 
-            # --- Save QGIS Project ---
+            # -------------------------------------------------
+            # Save the new PSU as its own active QGIS project
+            # -------------------------------------------------
             project_filename = f"{base_name}.qgs"
-            self.generated_project_path = os.path.join(output_folder, project_filename)
-            QgsProject.instance().setCrs(QgsCoordinateReferenceSystem("EPSG:4326"))
-            QgsProject.instance().write(self.generated_project_path)
+            self.generated_project_path = os.path.join(
+                output_folder,
+                project_filename
+            )
 
+            project = QgsProject.instance()
+
+            project.setCrs(
+                QgsCoordinateReferenceSystem(
+                    "EPSG:4326"
+                )
+            )
+
+            project.setTitle(
+                base_name
+            )
+
+            if not project.write(
+                self.generated_project_path
+            ):
+                raise RuntimeError(
+                    "The generated QGIS project could not be saved.\n\n"
+                    f"{self.generated_project_path}"
+                )
+
+            # QGIS is now associated with the newly generated PSU project.
             self.update_selected_psu_paths()
 
             # Defensive cleanup in case a processing provider registered
@@ -1134,7 +1316,8 @@ class geofasuDialog(QDialog, FORM_CLASS):
                         else "Basemap: not available.\n\n"
                     )
                 )
-                + "QField package readiness was also inspected."
+                + "QField package readiness was also inspected.\n\n"
+                + "This PSU is now the active QGIS project."
                 + (
                     f"\n\nTemporary processing layers removed: "
                     f"{removed_temp_layers}"

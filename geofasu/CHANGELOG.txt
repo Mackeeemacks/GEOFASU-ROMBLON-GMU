@@ -1,31 +1,12 @@
-# GEOFASU Changelog
+GEOFASU 2.1.2
+2026-08-24
 
-All notable changes to GEOFASU are documented in this file.
+Changed
+- Each PSU generation now starts a new independent QGIS project.
+- Previous PSU layers and layer groups are no longer carried into the next PSU.
+- Added Save, Discard, or Cancel handling when the current QGIS project has unsaved changes.
+- Newly generated PSU project becomes the active QGIS project.
+- Removed duplicate temporary processing layer cleanup method.
 
-## [2.1.0] - 2026-08-20
-
-### Added
-- Added an **Extract and load basemap** checkbox to the Pre-Process workflow.
-- Basemap extraction and loading can now be enabled or disabled per PSU before generating geometry.
-
-### Changed
-- Basemap processing is now optional instead of always running.
-- When basemap extraction is disabled, GEOFASU:
-  - skips raster clipping/extraction;
-  - does not load a BASEMAP raster layer;
-  - does not create the Basemap layer group;
-  - does not include a basemap raster in the generated QField package.
-- Barangay boundary loading remains independent of the basemap option.
-- Existing behavior is preserved by keeping **Extract and load basemap** enabled by default.
-- Removed duplicate temporary processing-layer cleanup in the Pre-Process workflow.
-
-## [2.0.9] - Previous Release
-
-### Changed
-- Previous published GEOFASU release.
-- Added generalized project processing and naming support beyond LFS.
-- LFS retains year/month/project naming such as `2026_JAN_LFS` and `2026_FEB_LFS`.
-- Non-LFS projects use year/project naming without the LFS round/month, such as `2026_GATS` and `2026_HSDV`.
-- Project abbreviation is inherited by generated layer names, GeoPackage filenames, QGIS project filenames, output paths, and QField package paths.
-- Integrated project inspection and QField packaging into the Pre-Process workflow.
-- QGIS repository package uses the stable `geofasu.zip` filename for plugin installation and updates.
+Fixed
+- Fixed generation of a newly selected PSU occurring inside the previously generated PSU project.
