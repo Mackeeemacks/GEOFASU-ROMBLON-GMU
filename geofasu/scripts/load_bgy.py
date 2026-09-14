@@ -2,7 +2,13 @@ from qgis.core import QgsVectorLayer, QgsProject, QgsProcessingFeedback, QgsVect
 import os
 import processing
 
-def load_barangay_layer_smart(source_layer, geoid_prefix=None, base_folder=r"C:/PSA-GIS/MAP LAYERS", output_folder=None):
+def load_barangay_layer_smart(
+    source_layer,
+    geoid_prefix=None,
+    base_folder=r"C:/PSA-GIS/MAP LAYERS",
+    output_folder=None,
+    source_layer_cache=None,
+):
     """
     Load matching Barangay layer, join attributes by location with source_layer (LFS),
     save as GeoPackage in output_folder, and load in the canvas.
@@ -22,43 +28,53 @@ def load_barangay_layer_smart(source_layer, geoid_prefix=None, base_folder=r"C:/
     geoid_prefix = str(geoid_prefix)
     checked_layers = []
 
-    # --- Find the original Barangay layer ---
+    # --- Find/reuse the original Barangay layer ---
     bgy_layer = None
-    for root, _, files in os.walk(base_folder):
-        for file in files:
+    cache_key = str(geoid_prefix)
 
-            if not file.lower().endswith(".gpkg"):
-                continue
+    if source_layer_cache is not None:
+        cached = source_layer_cache.get(cache_key)
+        if cached is not None and cached.isValid():
+            bgy_layer = cached
 
-            if not file.startswith(geoid_prefix):
-                continue
+    if bgy_layer is None:
+        for root, _, files in os.walk(base_folder):
+            for file in files:
 
-            gpkg_path = os.path.join(root, file)
-            container = QgsVectorLayer(gpkg_path, file, "ogr")
-            if not container.isValid():
-                checked_layers.append(f"{gpkg_path} (invalid container)")
-                continue
-
-            for sub in container.dataProvider().subLayers():
-                parts = sub.split("!!::!!")
-                if len(parts) < 2:
-                    continue
-                layer_name = parts[1]
-                uri = f"{gpkg_path}|layername={layer_name}"
-                layer = QgsVectorLayer(uri, layer_name, "ogr")
-                checked_layers.append(f"{gpkg_path} -> {layer_name}")
-
-                if not layer.isValid() or layer.geometryType() != 2:
-                    continue
-                if "bgy" not in layer_name.lower() and "barangay" not in layer_name.lower():
+                if not file.lower().endswith(".gpkg"):
                     continue
 
-                bgy_layer = layer
-                break
+                if not file.startswith(geoid_prefix):
+                    continue
+
+                gpkg_path = os.path.join(root, file)
+                container = QgsVectorLayer(gpkg_path, file, "ogr")
+                if not container.isValid():
+                    checked_layers.append(f"{gpkg_path} (invalid container)")
+                    continue
+
+                for sub in container.dataProvider().subLayers():
+                    parts = sub.split("!!::!!")
+                    if len(parts) < 2:
+                        continue
+                    layer_name = parts[1]
+                    uri = f"{gpkg_path}|layername={layer_name}"
+                    layer = QgsVectorLayer(uri, layer_name, "ogr")
+                    checked_layers.append(f"{gpkg_path} -> {layer_name}")
+
+                    if not layer.isValid() or layer.geometryType() != 2:
+                        continue
+                    if "bgy" not in layer_name.lower() and "barangay" not in layer_name.lower():
+                        continue
+
+                    bgy_layer = layer
+                    if source_layer_cache is not None:
+                        source_layer_cache[cache_key] = bgy_layer
+                    break
+                if bgy_layer:
+                    break
             if bgy_layer:
                 break
-        if bgy_layer:
-            break
 
     if bgy_layer is None:
         checked_str = "\n".join(checked_layers)

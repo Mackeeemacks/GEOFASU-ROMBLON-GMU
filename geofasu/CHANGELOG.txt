@@ -1,31 +1,55 @@
-# GEOFASU Changelog
+GEOFASU 2.1.5
+2026-09-15
 
-All notable changes to GEOFASU are documented in this file.
+Optimized
+- Added persistent shared barangay basemap cache for bulk generation.
+- Identical raster clips are generated once and reused across PSUs and later bulk runs.
+- Uses NTFS hard links for cached basemaps when possible, with file-copy fallback.
+- Caches municipality/barangay source layers to avoid repeated MAP LAYERS directory scans.
+- Bulk processing now uses staged execution: prepare/index, QGIS generation, then QField packaging.
+- QField packages are generated only after all QGIS projects are finished.
+- QGIS canvas rendering remains disabled through generation and only the final project is loaded.
+- Improved in-window progress reporting with Stage 1/3, Stage 2/3, and Stage 3/3 status.
 
-## [2.1.0] - 2026-08-20
+GEOFASU 2.1.4
+2026-09-14
 
-### Added
-- Added an **Extract and load basemap** checkbox to the Pre-Process workflow.
-- Basemap extraction and loading can now be enabled or disabled per PSU before generating geometry.
+Optimized
+- Faster raster clipping using direct geometry transform/buffer operations.
+- GDAL raster clipping now uses multithreaded warping.
+- Municipality source rasters are cached during bulk runs instead of reopened for every PSU.
+- Bulk mode skips per-PSU raster pyramid creation and redraws the QGIS map canvas only once at the end.
+- Sample features are indexed by PSU once before bulk generation to avoid repeatedly scanning the full sample layer.
+- Bulk generation no longer changes the PSU combo box on every iteration.
+- PSU list workbook is opened in read-only mode for faster/lighter loading.
 
-### Changed
-- Basemap processing is now optional instead of always running.
-- When basemap extraction is disabled, GEOFASU:
-  - skips raster clipping/extraction;
-  - does not load a BASEMAP raster layer;
-  - does not create the Basemap layer group;
-  - does not include a basemap raster in the generated QField package.
-- Barangay boundary loading remains independent of the basemap option.
-- Existing behavior is preserved by keeping **Extract and load basemap** enabled by default.
-- Removed duplicate temporary processing-layer cleanup in the Pre-Process workflow.
+Added
+- In-window Pre-Processing progress bar and live status text.
+- Bulk Generate button becomes Cancel Bulk Processing while a batch is running.
 
-## [2.0.9] - Previous Release
+GEOFASU 2.1.3
+2026-09-14
 
-### Changed
-- Previous published GEOFASU release.
-- Added generalized project processing and naming support beyond LFS.
-- LFS retains year/month/project naming such as `2026_JAN_LFS` and `2026_FEB_LFS`.
-- Non-LFS projects use year/project naming without the LFS round/month, such as `2026_GATS` and `2026_HSDV`.
-- Project abbreviation is inherited by generated layer names, GeoPackage filenames, QGIS project filenames, output paths, and QField package paths.
-- Integrated project inspection and QField packaging into the Pre-Process workflow.
-- QGIS repository package uses the stable `geofasu.zip` filename for plugin installation and updates.
+Added
+- Added bulk pre-processing for all PSUs in the loaded sample list.
+- Added option to create one independent QGIS project for every PSU.
+- Added optional automatic QField package creation for every generated PSU.
+- Bulk QField packaging reuses the QField options configured in Section 5.
+- Added cancellable bulk progress dialog and end-of-run success/failure summary.
+
+Changed
+- Bulk processing automatically replaces existing generated QField package folders for processed PSUs after one confirmation.
+- QField bulk mode automatically requires QGIS project generation.
+
+GEOFASU 2.1.2
+2026-08-24
+
+Changed
+- Each PSU generation now starts a new independent QGIS project.
+- Previous PSU layers and layer groups are no longer carried into the next PSU.
+- Added Save, Discard, or Cancel handling when the current QGIS project has unsaved changes.
+- Newly generated PSU project becomes the active QGIS project.
+- Removed duplicate temporary processing layer cleanup method.
+
+Fixed
+- Fixed generation of a newly selected PSU occurring inside the previously generated PSU project.
