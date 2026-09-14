@@ -936,6 +936,7 @@ class geofasuDialog(QDialog, FORM_CLASS):
         return True
 
     # =========================================================
+<<<<<<< HEAD
     # Bulk Generation Options
     # =========================================================
     def on_bulk_qfield_toggled(self, checked):
@@ -1698,6 +1699,14 @@ class geofasuDialog(QDialog, FORM_CLASS):
     # =========================================================
     def generate_geometry(self):
         """Generate the currently selected PSU using the optimized core."""
+=======
+    # Generate Geometry
+    # =========================================================
+    def generate_geometry(self):
+        # -----------------------------------------------------
+        # Validate project abbreviation
+        # -----------------------------------------------------
+>>>>>>> a14d64220e2cacf1440c18e2bb5595aee30c50cc
         try:
             project_code = self.current_project_abbreviation()
         except ValueError as exc:
@@ -1708,9 +1717,21 @@ class geofasuDialog(QDialog, FORM_CLASS):
             )
             return
 
+<<<<<<< HEAD
         path = self.ssu_list_path.text().strip()
+=======
+        # -----------------------------------------------------
+        # Validate sample workbook
+        # -----------------------------------------------------
+        path = self.ssu_list_path.text().strip()
+
+>>>>>>> a14d64220e2cacf1440c18e2bb5595aee30c50cc
         if not path:
-            QMessageBox.warning(self, "Missing File", "Select Excel file first.")
+            QMessageBox.warning(
+                self,
+                "Missing File",
+                "Select Excel file first."
+            )
             return
         if not os.path.isfile(path):
             QMessageBox.warning(
@@ -1720,50 +1741,244 @@ class geofasuDialog(QDialog, FORM_CLASS):
             )
             return
 
+<<<<<<< HEAD
         idx = self.cbpsu_list.currentIndex()
+=======
+        if not os.path.isfile(path):
+            QMessageBox.warning(
+                self,
+                "Missing File",
+                "The selected Excel file does not exist.\n\n"
+                f"{path}"
+            )
+            return
+
+        # -----------------------------------------------------
+        # Capture selected PSU BEFORE clearing the old project
+        # -----------------------------------------------------
+        idx = self.cbpsu_list.currentIndex()
+
+>>>>>>> a14d64220e2cacf1440c18e2bb5595aee30c50cc
         if idx < 0:
             QMessageBox.warning(
                 self,
                 "No PSU Selected",
+<<<<<<< HEAD
                 "Select a PSU before generating geometry.",
             )
             return
 
         psu_data = self.cbpsu_list.itemData(idx) or {}
         psu_number = psu_data.get("PSU_number")
+=======
+                "Select a PSU before generating geometry."
+            )
+            return
+
+        psu_data = self.cbpsu_list.itemData(idx)
+
+        if not psu_data:
+            QMessageBox.warning(
+                self,
+                "Invalid PSU",
+                "The selected PSU does not contain valid PSU information."
+            )
+            return
+
+        psu_number = psu_data.get(
+            "PSU_number"
+        )
+
+>>>>>>> a14d64220e2cacf1440c18e2bb5595aee30c50cc
         if psu_number is None:
             QMessageBox.warning(
                 self,
                 "Invalid PSU",
+<<<<<<< HEAD
                 "The selected PSU does not contain a PSU number.",
             )
             return
 
         output_folder, _ = self._paths_for_psu_data(psu_data)
+=======
+                "The selected PSU does not contain a PSU number."
+            )
+            return
+
+        geoid_prefix = psu_data.get(
+            "Geoid_prefix"
+        )
+
+        # -----------------------------------------------------
+        # Validate the PSU-specific output folder
+        # -----------------------------------------------------
+        output_folder = self.output_path.text().strip()
+
+>>>>>>> a14d64220e2cacf1440c18e2bb5595aee30c50cc
         if not output_folder:
             QMessageBox.warning(
                 self,
                 "Missing Output Folder",
+<<<<<<< HEAD
                 "The selected PSU output folder could not be determined.",
+=======
+                "The selected PSU output folder could not be determined."
+>>>>>>> a14d64220e2cacf1440c18e2bb5595aee30c50cc
             )
             return
-        os.makedirs(output_folder, exist_ok=True)
 
+<<<<<<< HEAD
         if not self.prepare_project_for_generation():
             return
 
         self._source_raster_cache.clear()
         self._set_preprocess_progress(0, f"Starting PSU_{psu_number}...")
         QApplication.setOverrideCursor(Qt.WaitCursor)
+=======
+        os.makedirs(
+            output_folder,
+            exist_ok=True
+        )
+
+        # -----------------------------------------------------
+        # IMPORTANT:
+        # Start a completely clean QGIS project for this PSU.
+        # -----------------------------------------------------
+        if not self.prepare_project_for_generation():
+            return
+
+        QApplication.setOverrideCursor(
+            Qt.WaitCursor
+        )
+
+        progress = QProgressDialog(
+            f"Generating PSU_{psu_number}...",
+            "",
+            0,
+            0,
+            self
+        )
+        progress.setWindowTitle(
+            "GEOFASU — Generate Geometry"
+        )
+        progress.setWindowModality(
+            Qt.WindowModal
+        )
+        progress.setCancelButton(None)
+        progress.setMinimumDuration(0)
+        progress.show()
+>>>>>>> a14d64220e2cacf1440c18e2bb5595aee30c50cc
 
         try:
             feedback = QgsProcessingFeedback()
             self._set_preprocess_progress(3, "Reading sample workbook...")
             main_layer = self._build_main_sample_layer(path, feedback)
 
+<<<<<<< HEAD
             result = self._generate_psu_project_core(
                 path=path,
                 psu_data=psu_data,
+=======
+            primary_sheets = ['Sample SSU', 'Selected Samples', 'AONCR-SAMPLE HH']
+            replacement_sheet = 'Replacement SSU'
+            layers = []
+            wkt_fields = {}
+
+            for name in primary_sheets + [replacement_sheet]:
+                uri = f'{path}|layername={name}'
+                lyr = QgsVectorLayer(uri, name.lower().replace(' ', '_'), 'ogr')
+                if not lyr.isValid():
+                    continue
+                wkt_field = next((f.name() for f in lyr.fields() if 'wkt' in f.name().lower()), None)
+                if not wkt_field:
+                    continue
+                layers.append(lyr)
+                wkt_fields[lyr] = wkt_field
+
+            if not layers:
+                QMessageBox.warning(self, "No data", "No valid sheets found.")
+                return
+
+            main_fields = layers[0].fields()
+            main_dp.addAttributes(main_fields)
+            main_layer.updateFields()
+
+            for lyr in layers:
+                for feat in lyr.getFeatures():
+                    wkt = feat[wkt_fields[lyr]]
+                    geom = QgsGeometry.fromWkt(wkt)
+                    if geom.isNull():
+                        nums = num_pat.findall(str(wkt))
+                        if len(nums) >= 2:
+                            geom = QgsGeometry.fromPointXY(QgsPointXY(float(nums[0]), float(nums[1])))
+                    if geom.isNull():
+                        continue
+                    nf = QgsFeature(main_fields)
+                    nf.setGeometry(geom)
+                    nf.setAttributes(feat.attributes())
+                    main_dp.addFeature(nf)
+
+            main_layer.updateExtents()
+
+            filtered_layer = extract_by_psu(main_layer, psu_number, feedback)
+            refactored_layer = refactor_psu_layer(filtered_layer, context=None, feedback=feedback)
+
+            year = int(psu_data["Year"])
+            rnd = int(psu_data["Round"])
+            rep = psu_data.get("Replicate_Number")
+
+            try:
+                rep = int(rep)
+            except Exception:
+                rep = str(rep)
+
+            prov_name = str(
+                psu_data["Prov_name"]
+            ).strip().upper()
+
+            project_key = self.build_project_key(
+                year=year,
+                round_number=rnd,
+            )
+
+            base_name = (
+                f"{project_key}_{prov_name}"
+                f"_SELECTED_SSU_R{rep}_PSU_{psu_number}"
+            )
+
+            # --- Save project GeoPackage ---
+            filename = f"{base_name}.gpkg"
+            output_file = os.path.join(output_folder, filename)
+
+            QgsVectorFileWriter.writeAsVectorFormat(
+                refactored_layer, output_file, "UTF-8", QgsCoordinateReferenceSystem("EPSG:4326"), "GPKG"
+            )
+
+            # --- Load layers to keep references ---
+            self.lfs_layer = QgsVectorLayer(output_file, filename, "ogr")
+            self.lfs_layer.setCrs(QgsCoordinateReferenceSystem("EPSG:4326"))
+            self.lfs_layer.setName(base_name)
+
+            # Snapping config
+            snap_cfg = QgsProject.instance().snappingConfig()
+            snap_cfg.setEnabled(True)
+            snap_cfg.setType(QgsSnappingConfig.Vertex)
+            snap_cfg.setMode(QgsSnappingConfig.AllLayers)
+            snap_cfg.setTolerance(12)
+            snap_cfg.setUnits(QgsTolerance.Pixels)
+            snap_cfg.setIntersectionSnapping(False)
+            QgsProject.instance().setSnappingConfig(snap_cfg)
+
+            # =================================================
+            # Load Barangay layer
+            # =================================================
+            self.bgy_layer = None
+            self.clipped_raster = None
+
+            bgy_layer = load_barangay_layer_smart(
+                self.lfs_layer,
+                geoid_prefix=geoid_prefix,
+>>>>>>> a14d64220e2cacf1440c18e2bb5595aee30c50cc
                 output_folder=output_folder,
                 main_layer=main_layer,
                 feedback=feedback,
@@ -1773,9 +1988,177 @@ class geofasuDialog(QDialog, FORM_CLASS):
                 progress_callback=self._set_preprocess_progress,
             )
 
+<<<<<<< HEAD
             self.output_path.setText(output_folder)
             _, qfield_folder = self._paths_for_psu_data(psu_data)
             self.qfield_package_path.setText(qfield_folder)
+=======
+            if bgy_layer:
+                self.bgy_layer = bgy_layer
+                self.bgy_layer.setName("BARANGAY BOUNDARY")
+                self.bgy_layer.setCrs(
+                    QgsCoordinateReferenceSystem("EPSG:4326")
+                )
+
+                # =============================================
+                # Optional Basemap Extraction / Loading
+                # =============================================
+                if self.chkLoadBasemap.isChecked():
+                    try:
+                        clipped_raster = clip_raster_by_bgy_memory(
+                            bgy_layer,
+                            geoid_prefix,
+                            output_folder,
+                        )
+
+                        if (
+                            clipped_raster
+                            and clipped_raster.isValid()
+                        ):
+                            self.clipped_raster = clipped_raster
+
+                    except Exception as e:
+                        QMessageBox.warning(
+                            self,
+                            "Raster Clip",
+                            "Could not extract/load the basemap.\n\n"
+                            f"{str(e)}"
+                        )
+                else:
+                    # Explicitly keep it None so a raster from a previously
+                    # processed PSU can never leak into the current project.
+                    self.clipped_raster = None
+
+            # =================================================
+            # Apply Styles
+            # =================================================
+            try:
+                if self.lfs_layer.isValid():
+                    load_style(self.lfs_layer, "samples_rep_layer.qml")
+                if self.bgy_layer and self.bgy_layer.isValid():
+                    load_style(self.bgy_layer, "bgy_boundary.qml")
+            except Exception as e:
+                QMessageBox.warning(self, "Style Warning", f"Could not apply style:\n{str(e)}")
+
+            # =================================================
+            # Layer Groups
+            # =================================================
+            root = QgsProject.instance().layerTreeRoot()
+
+            project_group_name = f"{project_code} Layers"
+            lfs_group = (
+                root.findGroup(project_group_name)
+                or root.addGroup(project_group_name)
+            )
+
+            base_group = (
+                root.findGroup("Base Layer")
+                or root.addGroup("Base Layer")
+            )
+
+            if self.lfs_layer.isValid():
+                QgsProject.instance().addMapLayer(
+                    self.lfs_layer,
+                    False
+                )
+                node = lfs_group.addLayer(
+                    self.lfs_layer
+                )
+                node.setExpanded(False)
+
+            if (
+                self.bgy_layer
+                and self.bgy_layer.isValid()
+            ):
+                QgsProject.instance().addMapLayer(
+                    self.bgy_layer,
+                    False
+                )
+                node = base_group.addLayer(
+                    self.bgy_layer
+                )
+                node.setExpanded(False)
+
+            # Do not even create the Basemap group when the option is off.
+            if (
+                self.chkLoadBasemap.isChecked()
+                and self.clipped_raster
+                and self.clipped_raster.isValid()
+            ):
+                basemap_group = (
+                    root.findGroup("Basemap")
+                    or root.addGroup("Basemap")
+                )
+
+                QgsProject.instance().addMapLayer(
+                    self.clipped_raster,
+                    False
+                )
+
+                node = basemap_group.addLayer(
+                    self.clipped_raster
+                )
+                node.setItemVisibilityChecked(False)
+                node.setExpanded(False)
+
+            # --- Zoom to outputs ---
+            from qgis.utils import iface
+            combined_extent = self.lfs_layer.extent()
+            if self.bgy_layer:
+                combined_extent.combineExtentWith(self.bgy_layer.extent())
+            if (
+                self.clipped_raster
+                and self.clipped_raster.isValid()
+            ):
+                combined_extent.combineExtentWith(
+                    self.clipped_raster.extent()
+                )
+            iface.mapCanvas().setExtent(combined_extent)
+            iface.mapCanvas().refresh()
+
+            # -------------------------------------------------
+            # Remove temporary processing memory layers
+            # -------------------------------------------------
+            removed_temp_layers = (
+                self.remove_temporary_processing_layers()
+            )
+
+            # -------------------------------------------------
+            # Save the new PSU as its own active QGIS project
+            # -------------------------------------------------
+            project_filename = f"{base_name}.qgs"
+            self.generated_project_path = os.path.join(
+                output_folder,
+                project_filename
+            )
+
+            project = QgsProject.instance()
+
+            project.setCrs(
+                QgsCoordinateReferenceSystem(
+                    "EPSG:4326"
+                )
+            )
+
+            project.setTitle(
+                base_name
+            )
+
+            if not project.write(
+                self.generated_project_path
+            ):
+                raise RuntimeError(
+                    "The generated QGIS project could not be saved.\n\n"
+                    f"{self.generated_project_path}"
+                )
+
+            # QGIS is now associated with the newly generated PSU project.
+            self.update_selected_psu_paths()
+
+            # Defensive cleanup in case a processing provider registered
+            # another generic memory "output" layer after project writing.
+            self.remove_temporary_processing_layers()
+>>>>>>> a14d64220e2cacf1440c18e2bb5595aee30c50cc
 
             self._set_preprocess_progress(96, "Inspecting QField readiness...")
             # Keep existing inspection behavior for the interactive single-PSU
@@ -1798,6 +2181,7 @@ class geofasuDialog(QDialog, FORM_CLASS):
             QMessageBox.information(
                 self,
                 "Done",
+<<<<<<< HEAD
                 f"{result['project_key']} PSU geometry and QGIS project were "
                 "generated successfully.\n\n"
                 f"GeoPackage:\n{result['output_file']}\n\n"
@@ -1805,6 +2189,32 @@ class geofasuDialog(QDialog, FORM_CLASS):
                 f"{basemap_text}\n\n"
                 "QField package readiness was also inspected.\n\n"
                 "This PSU is now the active QGIS project.",
+=======
+                f"{project_key} PSU geometry and QGIS project were generated successfully.\n\n"
+                f"GeoPackage:\n{output_file}\n\n"
+                f"QGIS project:\n{self.generated_project_path}\n\n"
+                + (
+                    "Basemap: extracted and loaded.\n\n"
+                    if (
+                        self.chkLoadBasemap.isChecked()
+                        and self.clipped_raster
+                        and self.clipped_raster.isValid()
+                    )
+                    else (
+                        "Basemap: skipped by user.\n\n"
+                        if not self.chkLoadBasemap.isChecked()
+                        else "Basemap: not available.\n\n"
+                    )
+                )
+                + "QField package readiness was also inspected.\n\n"
+                + "This PSU is now the active QGIS project."
+                + (
+                    f"\n\nTemporary processing layers removed: "
+                    f"{removed_temp_layers}"
+                    if removed_temp_layers
+                    else ""
+                )
+>>>>>>> a14d64220e2cacf1440c18e2bb5595aee30c50cc
             )
 
         except Exception as exc:

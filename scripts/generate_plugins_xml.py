@@ -43,7 +43,7 @@ def generate_plugins_xml() -> Path:
 
     config.read(
         metadata_path,
-        encoding="utf-8",
+        encoding="utf-8-sig",
     )
 
     version = metadata_value(

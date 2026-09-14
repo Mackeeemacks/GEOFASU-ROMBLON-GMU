@@ -1,3 +1,4 @@
+<<<<<<< HEAD
 GEOFASU 2.1.5
 2026-09-15
 
@@ -51,5 +52,17 @@ Changed
 - Newly generated PSU project becomes the active QGIS project.
 - Removed duplicate temporary processing layer cleanup method.
 
+=======
+GEOFASU 2.1.2
+2026-08-24
+
+Changed
+- Each PSU generation now starts a new independent QGIS project.
+- Previous PSU layers and layer groups are no longer carried into the next PSU.
+- Added Save, Discard, or Cancel handling when the current QGIS project has unsaved changes.
+- Newly generated PSU project becomes the active QGIS project.
+- Removed duplicate temporary processing layer cleanup method.
+
+>>>>>>> a14d64220e2cacf1440c18e2bb5595aee30c50cc
 Fixed
 - Fixed generation of a newly selected PSU occurring inside the previously generated PSU project.

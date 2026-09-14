@@ -47,7 +47,7 @@ def read_version() -> str:
 
     config.read(
         metadata_path,
-        encoding="utf-8",
+        encoding="utf-8-sig",
     )
 
     version = config.get(
