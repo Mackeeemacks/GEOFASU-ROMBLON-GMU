@@ -1,0 +1,12 @@
+[general]
+name=GMU Romblon Operations
+qgisMinimumVersion=3.28
+description=Centralized QGIS tools for GMU Romblon operations, organized into separate GEOFASU and 1MAP groups.
+version=0.1.0
+author=PSA Romblon Provincial Statistical Office
+email=
+about=Centralized operational QGIS plugin for PSA Romblon GMU. Initial release provides 1MAP EA-to-barangay vertex validation.
+category=Vector
+experimental=True
+deprecated=False
+hasProcessingProvider=yes
