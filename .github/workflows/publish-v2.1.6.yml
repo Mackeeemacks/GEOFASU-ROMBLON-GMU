@@ -1,0 +1,83 @@
+name: Publish GEOFASU 2.1.6
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - ".github/workflows/publish-v2.1.6.yml"
+
+permissions:
+  contents: write
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Verify release version
+        shell: bash
+        run: |
+          python - <<'PY'
+          import configparser
+          cfg = configparser.ConfigParser()
+          cfg.read("geofasu/metadata.txt", encoding="utf-8")
+          version = cfg.get("general", "version").strip()
+          if version != "2.1.6":
+              raise SystemExit(f"Expected 2.1.6, found {version}")
+          print("Publishing GEOFASU", version)
+          PY
+
+      - name: Build plugin ZIP
+        run: python scripts/build_plugin.py
+
+      - name: Generate plugins.xml
+        run: python scripts/generate_plugins_xml.py
+
+      - name: Verify release assets
+        shell: bash
+        run: |
+          test -f dist/geofasu.zip
+          test -f dist/plugins.xml
+          python - <<'PY'
+          import zipfile
+          with zipfile.ZipFile("dist/geofasu.zip") as z:
+              names = set(z.namelist())
+              required = {
+                  "geofasu/__init__.py",
+                  "geofasu/metadata.txt",
+                  "geofasu/geofasu.py",
+                  "geofasu/scripts/qfield_packager.py",
+              }
+              missing = required - names
+              if missing:
+                  raise SystemExit("Missing ZIP members: " + ", ".join(sorted(missing)))
+              if {n.split("/",1)[0] for n in names if n} != {"geofasu"}:
+                  raise SystemExit("Invalid plugin ZIP root")
+          print("Release assets verified")
+          PY
+
+      - name: Create or update v2.1.6 release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          TAG="v2.1.6"
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            gh release upload "$TAG" dist/geofasu.zip dist/plugins.xml --clobber
+          else
+            gh release create "$TAG" \
+              dist/geofasu.zip \
+              dist/plugins.xml \
+              --target "$GITHUB_SHA" \
+              --title "GEOFASU 2.1.6" \
+              --notes "GEOFASU QGIS plugin release 2.1.6. Fixes QField packaging so generated SELECTED_SSU LFS GeoPackages remain editable root-level files instead of being consolidated into data.gpkg."
+          fi
