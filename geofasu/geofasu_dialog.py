@@ -757,7 +757,7 @@ class geofasuDialog(QDialog, FORM_CLASS):
                 "The QField cable package was created successfully.\n\n"
                 f"Package folder:\n{result.package_folder}\n\n"
                 f"QField project:\n{result.packaged_project_file}\n\n"
-                f"Offline data:\n{result.offline_database}\n\n"
+                "Editable LFS data: root-level GeoPackage file(s)\n\n"
                 f"Manifest:\n{result.manifest_file}\n\n"
                 "Copy the complete PSU package folder to the QField device."
             )
