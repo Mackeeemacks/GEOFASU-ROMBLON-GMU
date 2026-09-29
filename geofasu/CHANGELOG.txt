@@ -1,3 +1,12 @@
+GEOFASU 2.1.6
+2026-09-29
+
+Fixed
+- QField packaging now keeps the generated SELECTED_SSU LFS GeoPackage as an editable file in the PSU package root.
+- LFS data is no longer consolidated into QGIS Offline Editing data.gpkg.
+- Packaged QGIS/QField projects now point directly to the root-level LFS GeoPackage.
+- QField package inspection and completion messages now reflect the root-level editable LFS packaging behavior.
+
 GEOFASU 2.1.5
 2026-09-15
 
