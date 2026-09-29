@@ -18,6 +18,7 @@ from qgis.core import (
     QgsProject,
     QgsSpatialIndex,
     QgsWkbTypes,
+    QgsPointXY,
 )
 
 
@@ -245,7 +246,7 @@ class ValidateEABarangayVerticesAlgorithm(QgsProcessingAlgorithm):
                 unmatched_eas += 1
                 for vertex_no, vertex in enumerate(vertices, start=1):
                     out_feature = QgsFeature(fields)
-                    out_feature.setGeometry(QgsGeometry.fromPointXY(vertex))
+                    out_feature.setGeometry(QgsGeometry.fromPointXY(QgsPointXY(vertex)))
                     out_feature.setAttributes(
                         [
                             ea_feature.id(),
@@ -264,7 +265,7 @@ class ValidateEABarangayVerticesAlgorithm(QgsProcessingAlgorithm):
             barangay_id = self._field_text(best_barangay, barangay_id_field)
 
             for vertex_no, vertex in enumerate(vertices, start=1):
-                point_geom = QgsGeometry.fromPointXY(vertex)
+                point_geom = QgsGeometry.fromPointXY(QgsPointXY(vertex))
 
                 # intersects() is intentional: a vertex exactly on the barangay
                 # boundary is valid, while contains() would reject it.
