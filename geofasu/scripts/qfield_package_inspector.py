@@ -46,7 +46,7 @@ def _classify_layer(layer: QgsMapLayer) -> tuple[str, str]:
     if isinstance(layer, QgsVectorLayer):
         name = layer.name().upper()
         if "SELECTED_SSU" in name or "SELECTED SSU" in name:
-            return "Vector", "Offline editable"
+            return "Vector", "Copy editable to package root"
         return "Vector", "Copy read-only"
 
     return "Other", "Review"
@@ -97,15 +97,15 @@ def _inspect_layer(layer: QgsMapLayer) -> QFieldLayerInspection:
         if (
             status == "Ready"
             and isinstance(layer, QgsVectorLayer)
-            and proposed_action == "Offline editable"
+            and proposed_action == "Copy editable to package root"
         ):
             try:
                 pk_indexes = layer.dataProvider().pkAttributeIndexes()
                 if not pk_indexes:
                     status = "Warning"
                     message = (
-                        "No provider primary key was detected. Verify offline "
-                        "editing compatibility before production packaging."
+                        "No provider primary key was detected. Verify editable "
+                        "GeoPackage compatibility before production packaging."
                     )
             except Exception:
                 status = "Warning"
