@@ -5,7 +5,7 @@ GEOFASU QField cable package engine.
 Milestone 2:
 - Packages the current saved PSU project into:
     ...\QField Packages\PSU_<n>
-- Converts the generated selected-SSU LFS layer to offline data.gpkg.
+- Copies the generated selected-SSU LFS GeoPackage directly to the package root and keeps it editable.
 - Copies vector reference datasets read-only.
 - Copies raster/basemap datasets and common sidecar files.
 - Saves a portable relative-path QGIS project.
@@ -30,7 +30,6 @@ from qgis.core import (
     QgsCoordinateReferenceSystem,
     QgsCoordinateTransform,
     QgsMapLayer,
-    QgsOfflineEditing,
     QgsProject,
     QgsRasterLayer,
     QgsRectangle,
@@ -504,7 +503,7 @@ def package_current_project(
             / "basemap"
         )
 
-        offline_layers: list[QgsVectorLayer] = []
+        editable_lfs_layers: list[QgsVectorLayer] = []
 
         # Work on a list copy because data sources will be changed in place.
         for layer in list(
@@ -527,14 +526,31 @@ def package_current_project(
             if _is_editable_lfs_layer(layer):
                 assert isinstance(layer, QgsVectorLayer)
 
-                offline_layers.append(layer)
+                # LFS must remain a standalone editable GeoPackage in the
+                # root of the PSU package. Do not consolidate it into
+                # QGIS Offline Editing's data.gpkg.
+                new_source = _copy_vector_dataset(
+                    layer,
+                    package_folder_path,
+                )
+
+                provider_name = layer.providerType()
+
+                layer.setDataSource(
+                    new_source,
+                    layer.name(),
+                    provider_name,
+                )
+                layer.setReadOnly(False)
+
+                editable_lfs_layers.append(layer)
 
                 packaged_layers.append(
                     PackageLayerResult(
                         layer_name=layer.name(),
                         layer_type="Vector",
-                        action="Offline editable",
-                        packaged_source="data.gpkg",
+                        action="Copy editable to package root",
+                        packaged_source=new_source,
                     )
                 )
 
@@ -590,10 +606,9 @@ def package_current_project(
                     layer.id()
                 )
 
-        if not offline_layers:
+        if not editable_lfs_layers:
             raise RuntimeError(
-                "No generated SELECTED_SSU LFS layer was found for "
-                "offline editing."
+                "No generated SELECTED_SSU LFS layer was found for packaging."
             )
 
         if copy_styles_resources:
@@ -602,43 +617,10 @@ def package_current_project(
                 package_folder_path,
             )
 
-        aoi_rect, aoi_crs = _resolve_aoi(
-            project,
-            extent_mode,
-            canvas_extent,
-        )
-
-        only_selected = _select_offline_features(
-            project,
-            offline_layers,
-            aoi_rect,
-            aoi_crs,
-        )
-
-        offline_editing = QgsOfflineEditing()
-
-        is_success = (
-            offline_editing.convertToOfflineProject(
-                str(package_folder_path),
-                offline_db_path.name,
-                [
-                    layer.id()
-                    for layer in offline_layers
-                ],
-                only_selected,
-                containerType=(
-                    QgsOfflineEditing
-                    .ContainerType
-                    .GPKG
-                ),
-                layerNameSuffix=None,
-            )
-        )
-
-        if not is_success:
-            raise RuntimeError(
-                "QGIS Offline Editing failed to create data.gpkg."
-            )
+        # The generated SELECTED_SSU file is already PSU-specific. Keep the
+        # complete source GeoPackage as a root-level editable dataset instead
+        # of converting it to data.gpkg. The extent option is retained in
+        # package metadata for compatibility with existing UI/settings.
 
         # Portable-project safety options.
         _relative_project_setting(
@@ -706,9 +688,7 @@ def package_current_project(
             packaged_project_file=str(
                 packaged_project_path
             ),
-            offline_database=str(
-                offline_db_path
-            ),
+            offline_database="",
             manifest_file=str(
                 manifest_path
             ),
