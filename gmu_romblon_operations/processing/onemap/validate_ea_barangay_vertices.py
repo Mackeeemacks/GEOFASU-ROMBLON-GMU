@@ -8,6 +8,7 @@ from qgis.core import (
     QgsField,
     QgsFields,
     QgsGeometry,
+    QgsPointXY,
     QgsProcessing,
     QgsProcessingAlgorithm,
     QgsProcessingException,
@@ -18,7 +19,6 @@ from qgis.core import (
     QgsProject,
     QgsSpatialIndex,
     QgsWkbTypes,
-    QgsPointXY,
 )
 
 
@@ -29,6 +29,7 @@ class ValidateEABarangayVerticesAlgorithm(QgsProcessingAlgorithm):
     BARANGAY_ID_FIELD = "BARANGAY_ID_FIELD"
     TOLERANCE = "TOLERANCE"
     OUTPUT = "OUTPUT"
+    OUTPUT_POLYGONS = "OUTPUT_POLYGONS"
 
     def name(self):
         return "validate_ea_barangay_vertices"
@@ -46,8 +47,10 @@ class ValidateEABarangayVerticesAlgorithm(QgsProcessingAlgorithm):
         return (
             "Validates every vertex of each Enumeration Area (EA) polygon against "
             "its corresponding barangay polygon. The corresponding barangay is "
-            "chosen spatially using the largest polygon overlap. Vertices outside "
-            "the assigned barangay are written to a discrepancy point layer."
+            "chosen spatially using the largest polygon overlap. The algorithm "
+            "creates two outputs: (1) discrepancy points for EA vertices outside "
+            "the assigned barangay, and (2) discrepancy polygons showing the exact "
+            "parts of EAs which extend outside the barangay boundary."
         )
 
     def createInstance(self):
@@ -106,6 +109,14 @@ class ValidateEABarangayVerticesAlgorithm(QgsProcessingAlgorithm):
             )
         )
 
+        self.addParameter(
+            QgsProcessingParameterFeatureSink(
+                self.OUTPUT_POLYGONS,
+                "EA polygon discrepancies",
+                QgsProcessing.TypeVectorPolygon,
+            )
+        )
+
     @staticmethod
     def _field_text(feature, field_name):
         if not field_name:
@@ -123,6 +134,20 @@ class ValidateEABarangayVerticesAlgorithm(QgsProcessingAlgorithm):
             geom.transform(transform)
         return geom
 
+    @staticmethod
+    def _as_multipolygon(geometry):
+        geom = QgsGeometry(geometry)
+        if geom.isNull() or geom.isEmpty():
+            return geom
+
+        if QgsWkbTypes.geometryType(geom.wkbType()) != QgsWkbTypes.PolygonGeometry:
+            return QgsGeometry()
+
+        if not QgsWkbTypes.isMultiType(geom.wkbType()):
+            geom.convertToMultiType()
+
+        return geom
+
     def processAlgorithm(self, parameters, context, feedback):
         ea_source = self.parameterAsSource(parameters, self.EA_LAYER, context)
         barangay_source = self.parameterAsSource(parameters, self.BARANGAY_LAYER, context)
@@ -138,25 +163,49 @@ class ValidateEABarangayVerticesAlgorithm(QgsProcessingAlgorithm):
         )
         tolerance = self.parameterAsDouble(parameters, self.TOLERANCE, context)
 
-        fields = QgsFields()
-        fields.append(QgsField("ea_fid", QVariant.LongLong))
-        fields.append(QgsField("ea_id", QVariant.String, len=120))
-        fields.append(QgsField("brgy_fid", QVariant.LongLong))
-        fields.append(QgsField("brgy_id", QVariant.String, len=120))
-        fields.append(QgsField("vertex_no", QVariant.Int))
-        fields.append(QgsField("distance", QVariant.Double, len=20, prec=8))
-        fields.append(QgsField("error_type", QVariant.String, len=40))
+        point_fields = QgsFields()
+        point_fields.append(QgsField("ea_fid", QVariant.LongLong))
+        point_fields.append(QgsField("ea_id", QVariant.String, len=120))
+        point_fields.append(QgsField("brgy_fid", QVariant.LongLong))
+        point_fields.append(QgsField("brgy_id", QVariant.String, len=120))
+        point_fields.append(QgsField("vertex_no", QVariant.Int))
+        point_fields.append(QgsField("distance", QVariant.Double, len=20, prec=8))
+        point_fields.append(QgsField("error_type", QVariant.String, len=40))
 
-        sink, sink_id = self.parameterAsSink(
+        polygon_fields = QgsFields()
+        polygon_fields.append(QgsField("ea_fid", QVariant.LongLong))
+        polygon_fields.append(QgsField("ea_id", QVariant.String, len=120))
+        polygon_fields.append(QgsField("brgy_fid", QVariant.LongLong))
+        polygon_fields.append(QgsField("brgy_id", QVariant.String, len=120))
+        polygon_fields.append(QgsField("disc_area", QVariant.Double, len=20, prec=8))
+        polygon_fields.append(QgsField("pct_ea", QVariant.Double, len=12, prec=4))
+        polygon_fields.append(QgsField("error_type", QVariant.String, len=40))
+
+        point_sink, point_sink_id = self.parameterAsSink(
             parameters,
             self.OUTPUT,
             context,
-            fields,
+            point_fields,
             QgsWkbTypes.Point,
             ea_source.sourceCrs(),
         )
-        if sink is None:
-            raise QgsProcessingException("Could not create the discrepancy output layer.")
+        if point_sink is None:
+            raise QgsProcessingException(
+                "Could not create the vertex discrepancy output layer."
+            )
+
+        polygon_sink, polygon_sink_id = self.parameterAsSink(
+            parameters,
+            self.OUTPUT_POLYGONS,
+            context,
+            polygon_fields,
+            QgsWkbTypes.MultiPolygon,
+            ea_source.sourceCrs(),
+        )
+        if polygon_sink is None:
+            raise QgsProcessingException(
+                "Could not create the polygon discrepancy output layer."
+            )
 
         barangay_features = {f.id(): f for f in barangay_source.getFeatures()}
         barangay_index = QgsSpatialIndex()
@@ -182,6 +231,7 @@ class ValidateEABarangayVerticesAlgorithm(QgsProcessingAlgorithm):
         checked_eas = 0
         checked_vertices = 0
         discrepancy_count = 0
+        polygon_discrepancy_count = 0
         unmatched_eas = 0
 
         for current, ea_feature in enumerate(ea_source.getFeatures()):
@@ -241,12 +291,16 @@ class ValidateEABarangayVerticesAlgorithm(QgsProcessingAlgorithm):
             checked_vertices += len(vertices)
 
             ea_id = self._field_text(ea_feature, ea_id_field)
+            ea_area = ea_geom.area()
 
             if best_barangay is None or best_barangay_geom is None:
                 unmatched_eas += 1
+
                 for vertex_no, vertex in enumerate(vertices, start=1):
-                    out_feature = QgsFeature(fields)
-                    out_feature.setGeometry(QgsGeometry.fromPointXY(QgsPointXY(vertex)))
+                    out_feature = QgsFeature(point_fields)
+                    out_feature.setGeometry(
+                        QgsGeometry.fromPointXY(QgsPointXY(vertex))
+                    )
                     out_feature.setAttributes(
                         [
                             ea_feature.id(),
@@ -258,8 +312,29 @@ class ValidateEABarangayVerticesAlgorithm(QgsProcessingAlgorithm):
                             "NO_BARANGAY_MATCH",
                         ]
                     )
-                    sink.addFeature(out_feature, QgsFeatureSink.FastInsert)
+                    point_sink.addFeature(out_feature, QgsFeatureSink.FastInsert)
                     discrepancy_count += 1
+
+                unmatched_polygon = self._as_multipolygon(ea_geom)
+                if not unmatched_polygon.isNull() and not unmatched_polygon.isEmpty():
+                    polygon_feature = QgsFeature(polygon_fields)
+                    polygon_feature.setGeometry(unmatched_polygon)
+                    polygon_feature.setAttributes(
+                        [
+                            ea_feature.id(),
+                            ea_id,
+                            -1,
+                            "",
+                            ea_area,
+                            100.0 if ea_area > 0 else None,
+                            "NO_BARANGAY_MATCH",
+                        ]
+                    )
+                    polygon_sink.addFeature(
+                        polygon_feature, QgsFeatureSink.FastInsert
+                    )
+                    polygon_discrepancy_count += 1
+
                 continue
 
             barangay_id = self._field_text(best_barangay, barangay_id_field)
@@ -282,7 +357,7 @@ class ValidateEABarangayVerticesAlgorithm(QgsProcessingAlgorithm):
                 if valid:
                     continue
 
-                out_feature = QgsFeature(fields)
+                out_feature = QgsFeature(point_fields)
                 out_feature.setGeometry(point_geom)
                 out_feature.setAttributes(
                     [
@@ -295,13 +370,64 @@ class ValidateEABarangayVerticesAlgorithm(QgsProcessingAlgorithm):
                         "VERTEX_OUTSIDE_BARANGAY",
                     ]
                 )
-                sink.addFeature(out_feature, QgsFeatureSink.FastInsert)
+                point_sink.addFeature(out_feature, QgsFeatureSink.FastInsert)
                 discrepancy_count += 1
+
+            # Polygon discrepancy is EA minus the allowable barangay area.
+            # When tolerance is greater than zero, buffer the barangay by that
+            # tolerance so the polygon result follows the same tolerance rule
+            # as the vertex checks.
+            allowed_barangay_geom = QgsGeometry(best_barangay_geom)
+            if tolerance > 0.0:
+                allowed_barangay_geom = best_barangay_geom.buffer(tolerance, 8)
+
+            outside_geom = ea_geom.difference(allowed_barangay_geom)
+
+            if (
+                outside_geom is not None
+                and not outside_geom.isNull()
+                and not outside_geom.isEmpty()
+            ):
+                outside_polygon = self._as_multipolygon(outside_geom)
+
+                if not outside_polygon.isNull() and not outside_polygon.isEmpty():
+                    discrepancy_area = outside_polygon.area()
+                    pct_ea = (
+                        (discrepancy_area / ea_area) * 100.0
+                        if ea_area > 0
+                        else None
+                    )
+
+                    polygon_feature = QgsFeature(polygon_fields)
+                    polygon_feature.setGeometry(outside_polygon)
+                    polygon_feature.setAttributes(
+                        [
+                            ea_feature.id(),
+                            ea_id,
+                            best_barangay.id(),
+                            barangay_id,
+                            discrepancy_area,
+                            pct_ea,
+                            "EA_OUTSIDE_BARANGAY",
+                        ]
+                    )
+                    polygon_sink.addFeature(
+                        polygon_feature, QgsFeatureSink.FastInsert
+                    )
+                    polygon_discrepancy_count += 1
 
         feedback.setProgress(100)
         feedback.pushInfo("EA features checked: {}".format(checked_eas))
         feedback.pushInfo("EA vertices checked: {}".format(checked_vertices))
         feedback.pushInfo("Discrepancy vertices: {}".format(discrepancy_count))
-        feedback.pushInfo("EA features without barangay match: {}".format(unmatched_eas))
+        feedback.pushInfo(
+            "Polygon discrepancies: {}".format(polygon_discrepancy_count)
+        )
+        feedback.pushInfo(
+            "EA features without barangay match: {}".format(unmatched_eas)
+        )
 
-        return {self.OUTPUT: sink_id}
+        return {
+            self.OUTPUT: point_sink_id,
+            self.OUTPUT_POLYGONS: polygon_sink_id,
+        }
