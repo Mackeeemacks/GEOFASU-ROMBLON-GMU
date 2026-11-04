@@ -142,6 +142,7 @@ def clip_raster_by_bgy_memory(
     build_overviews=False,
     shared_clip_cache_dir=None,
     psu_geoid=None,
+    progress_callback=None,
 ):
     """Clip basemap to the 200 m buffered barangay boundary.
 
@@ -180,6 +181,21 @@ def clip_raster_by_bgy_memory(
 
     _safe_remove(output_for_gdal)
 
+    def notify(percent, message):
+        if progress_callback is not None:
+            progress_callback(float(percent), message)
+
+    def gdal_progress(start, span, message):
+        last = [-1]
+        def callback(fraction, _message, _data):
+            percent = int(start + span * max(0.0, min(1.0, fraction)))
+            if percent != last[0]:
+                last[0] = percent
+                notify(percent, message)
+            return 0 if feedback.isCanceled() else 1
+        return callback
+
+    notify(0, "Clipping source raster...")
     # MBTiles requires Web Mercator tiles. First clip to a temporary GeoTIFF,
     # reproject to EPSG:3857, then create a genuine MBTiles raster dataset.
     # The temporary files are never added to the QGIS layer tree.
@@ -206,26 +222,54 @@ def clip_raster_by_bgy_memory(
             "OUTPUT": clipped_tif,
         }
         processing.run("gdal:cliprasterbymasklayer", params, feedback=feedback)
+        if feedback.isCanceled():
+            raise RuntimeError("Basemap processing canceled.")
+        notify(40, "Reprojecting basemap to Web Mercator...")
+
+        # Cap output width to avoid excessively large MBTiles for QField.
+        # Preserve the geographic extent and aspect ratio.
+        source = gdal.Open(clipped_tif)
+        if source is None:
+            raise RuntimeError("Unable to open clipped raster.")
+        suggested = gdal.AutoCreateWarpedVRT(source, None, "EPSG:3857")
+        if suggested is None:
+            raise RuntimeError("Unable to calculate Web Mercator resolution.")
+        max_dimension = max(suggested.RasterXSize, suggested.RasterYSize)
+        scale = max(1.0, max_dimension / 8192.0)
+        transform = suggested.GetGeoTransform()
+        target_resolution = abs(transform[1]) * scale
+        suggested = None
+        source = None
 
         warped = gdal.Warp(
             mercator_tif, clipped_tif,
             dstSRS="EPSG:3857",
             format="GTiff",
             multithread=True,
+            xRes=target_resolution,
+            yRes=target_resolution,
+            callback=gdal_progress(40, 35, "Reprojecting basemap..."),
             creationOptions=["TILED=YES", "COMPRESS=DEFLATE"],
         )
         if warped is None:
             raise RuntimeError("Unable to reproject clipped basemap to EPSG:3857.")
         warped = None
+        if feedback.isCanceled():
+            raise RuntimeError("Basemap processing canceled.")
+        notify(75, "Encoding MBTiles...")
 
         tiles = gdal.Translate(
             output_for_gdal, mercator_tif,
             format="MBTILES",
-            creationOptions=["TILE_FORMAT=PNG"],
+            creationOptions=["TILE_FORMAT=PNG", "ZLEVEL=3"],
+            callback=gdal_progress(75, 25, "Encoding MBTiles..."),
         )
         if tiles is None:
             raise RuntimeError("Unable to convert clipped basemap to MBTiles.")
         tiles = None
+        if feedback.isCanceled():
+            raise RuntimeError("Basemap processing canceled.")
+        notify(100, "MBTiles created.")
 
     # Reuse the finished tile archive. Avoid rebuilding overviews per PSU.
     # A later, optional overview pass may be added for very large archives.
