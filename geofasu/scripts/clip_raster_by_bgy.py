@@ -246,7 +246,7 @@ def clip_raster_by_bgy_memory(
             raise RuntimeError("Unable to determine raster output resolution.")
         source_gt = source_vrt.GetGeoTransform()
         native_resolution = min(abs(source_gt[1]), abs(source_gt[5]))
-        resolution = max(native_resolution, width / 4096.0, height / 4096.0)
+        resolution = max(native_resolution, width / 8192.0, height / 8192.0)
         source_vrt = None
         source_ds = None
 
@@ -277,7 +277,7 @@ def clip_raster_by_bgy_memory(
         tiles = gdal.Translate(
             output_for_gdal, mercator_tif,
             format="MBTILES",
-            creationOptions=["TILE_FORMAT=JPEG", "QUALITY=85"],
+            creationOptions=["TILE_FORMAT=JPEG", "QUALITY=95"],
             callback=gdal_progress(75, 25, "Encoding MBTiles (JPEG)..."),
         )
         if tiles is None:
