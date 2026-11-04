@@ -174,8 +174,8 @@ class geofasuDialog(QDialog, FORM_CLASS):
         rnd = int(data.get("Round", 0))
         psu_number = data.get("PSU_number")
         geoid = str(data.get("GEOID", "")).strip()
-        if not re.fullmatch(r"\d{14}", geoid):
-            raise ValueError(f"Invalid 14-digit PSU GEOID for PSU_{psu_number}: {geoid!r}")
+        if not re.fullmatch(r"\d{14,20}", geoid):
+            raise ValueError(f"Invalid PSU GEOID for PSU_{psu_number}: {geoid!r}")
         province = str(data.get("Prov_name", "PROVINCE")).strip().upper()
 
         try:
@@ -242,7 +242,7 @@ class geofasuDialog(QDialog, FORM_CLASS):
                 if geoid_str.endswith(".0") and geoid_str[:-2].isdigit():
                     geoid_str = geoid_str[:-2]
                 geoid_str = geoid_str.zfill(14)
-                if not re.fullmatch(r"\d{14}", geoid_str):
+                if not re.fullmatch(r"\d{14,20}", geoid_str):
                     raise ValueError(f"Invalid GEOID in Sample PSU worksheet: {geoid!r}")
                 geoid_prefix = geoid_str[2:5] + geoid_str[5:7]
 
