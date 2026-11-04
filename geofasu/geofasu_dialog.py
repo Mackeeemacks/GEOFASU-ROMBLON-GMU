@@ -1223,6 +1223,7 @@ class geofasuDialog(QDialog, FORM_CLASS):
                         output_folder,
                         feedback=feedback,
                         psu_geoid=psu_data.get("GEOID"),
+                        progress_callback=lambda pct, msg: report(46 + pct * 0.24, f"PSU_{psu_number}: {msg} {int(pct)}%"),
                         source_raster_cache=self._source_raster_cache,
                         # Bulk clips are already small; building pyramids for
                         # every PSU adds substantial overhead.
