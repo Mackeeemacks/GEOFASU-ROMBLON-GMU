@@ -4,7 +4,7 @@ from qgis.PyQt.QtWidgets import (
     QDialog, QFileDialog, QMessageBox, QApplication, QProgressDialog,
     QTableWidgetItem, QHeaderView
 )
-from qgis.PyQt.QtCore import Qt
+from qgis.PyQt.QtCore import Qt, QEventLoop
 from qgis.PyQt.QtGui import QColor, QBrush
 from qgis.core import (
     QgsVectorLayer, QgsFeature, QgsGeometry, QgsPointXY,
@@ -160,12 +160,12 @@ class geofasuDialog(QDialog, FORM_CLASS):
         self.progressPreprocess.setValue(value)
         if text is not None:
             self.lblPreprocessProgress.setText(str(text))
-        QApplication.processEvents()
+        QApplication.processEvents(QEventLoop.ExcludeUserInputEvents)
 
     def _reset_preprocess_progress(self, text="Ready"):
         self.progressPreprocess.setValue(0)
         self.lblPreprocessProgress.setText(text)
-        QApplication.processEvents()
+        QApplication.processEvents(QEventLoop.ExcludeUserInputEvents)
 
     def _paths_for_psu_data(self, data):
         """Return output/QField folders without changing combo-box selection."""
