@@ -195,7 +195,7 @@ def clip_raster_by_bgy_memory(
             return 0 if feedback.isCanceled() else 1
         return callback
 
-    notify(0, "Clipping source raster...")
+    notify(0, "Preparing raster clip...")
     # Directly clip/reproject into a bounded GeoTIFF, then encode MBTiles.
     # The temporary files are never added to the QGIS layer tree.
     with tempfile.TemporaryDirectory(prefix="geofasu_mbtiles_") as temp_dir:
@@ -246,7 +246,7 @@ def clip_raster_by_bgy_memory(
             raise RuntimeError("Unable to determine raster output resolution.")
         source_gt = source_vrt.GetGeoTransform()
         native_resolution = min(abs(source_gt[1]), abs(source_gt[5]))
-        resolution = max(native_resolution, width / 8192.0, height / 8192.0)
+        resolution = max(native_resolution, width / 4096.0, height / 4096.0)
         source_vrt = None
         source_ds = None
 
@@ -262,10 +262,10 @@ def clip_raster_by_bgy_memory(
             outputBoundsSRS="EPSG:3857",
             xRes=resolution,
             yRes=resolution,
-            multithread=True,
-            warpMemoryLimit=256 * 1024 * 1024,
+            multithread=False,
+            warpMemoryLimit=128 * 1024 * 1024,
             callback=gdal_progress(5, 70, "Clipping and reprojecting raster..."),
-            creationOptions=["TILED=YES", "COMPRESS=DEFLATE", "BIGTIFF=IF_SAFER"],
+            creationOptions=["TILED=YES", "COMPRESS=NONE", "BIGTIFF=IF_SAFER"],
         )
         if warped is None:
             raise RuntimeError("Unable to reproject clipped basemap to EPSG:3857.")
