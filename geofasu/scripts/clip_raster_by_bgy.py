@@ -15,7 +15,7 @@ import os
 import shutil
 import subprocess
 import tempfile
-from osgeo import gdal
+from osgeo import gdal, ogr, osr
 from pathlib import Path
 
 import processing
@@ -199,61 +199,77 @@ def clip_raster_by_bgy_memory(
 
     notify(0, "Clipping source raster...")
     QApplication.processEvents()
-    # MBTiles requires Web Mercator tiles. First clip to a temporary GeoTIFF,
-    # reproject to EPSG:3857, then create a genuine MBTiles raster dataset.
+    # Directly clip/reproject into a bounded GeoTIFF, then encode MBTiles.
     # The temporary files are never added to the QGIS layer tree.
     with tempfile.TemporaryDirectory(prefix="geofasu_mbtiles_") as temp_dir:
-        clipped_tif = os.path.join(temp_dir, "clipped.tif")
         mercator_tif = os.path.join(temp_dir, "mercator.tif")
-        params = {
-            "INPUT": raster_layer,
-            "MASK": mask_layer,
-            "SOURCE_CRS": None,
-            "TARGET_CRS": None,
-            "TARGET_EXTENT": None,
-            "NODATA": None,
-            "ALPHA_BAND": False,
-            "CROP_TO_CUTLINE": True,
-            "KEEP_RESOLUTION": True,
-            "SET_RESOLUTION": False,
-            "X_RESOLUTION": None,
-            "Y_RESOLUTION": None,
-            "MULTITHREADING": True,
-            "OPTIONS": "",
-            "DATA_TYPE": 0,
-            "EXTRA": "-wo NUM_THREADS=ALL_CPUS",
-            "OUTPUT": clipped_tif,
-        }
-        processing.run("gdal:cliprasterbymasklayer", params, feedback=feedback)
-        if feedback.isCanceled():
-            raise RuntimeError("Basemap processing canceled.")
-        notify(40, "Reprojecting basemap to Web Mercator...")
+        mask_geojson = os.path.join(temp_dir, "cutline.geojson")
+
+        # Write the already-buffered barangay polygon as a real OGR cutline.
+        # Avoid QGIS Processing's full-resolution GeoTIFF intermediate:
+        # on high-resolution municipality rasters it can be enormous.
+        driver = ogr.GetDriverByName("GeoJSON")
+        cutline_ds = driver.CreateDataSource(mask_geojson)
+        if cutline_ds is None:
+            raise RuntimeError("Unable to create temporary clipping mask.")
+        srs = osr.SpatialReference()
+        srs.ImportFromEPSG(32651)
+        cutline_layer = cutline_ds.CreateLayer("cutline", srs=srs, geom_type=ogr.wkbUnknown)
+        cutline_feature = ogr.Feature(cutline_layer.GetLayerDefn())
+        cutline_feature.SetGeometry(ogr.CreateGeometryFromWkt(buffered.asWkt()))
+        if cutline_layer.CreateFeature(cutline_feature) != 0:
+            raise RuntimeError("Unable to write clipping mask geometry.")
+        cutline_feature = None
+        cutline_ds = None
+
+        source_path = _physical_source_path(raster_layer)
+        source_ds = gdal.Open(source_path)
+        if source_ds is None:
+            raise RuntimeError(f"Unable to open source raster: {source_path}")
+        if source_ds.RasterCount < 1:
+            raise RuntimeError("Source raster contains no raster bands.")
+
+        # Estimate the output extent from the small barangay buffer, not
+        # from the entire municipality source raster.
+        mercator_crs = QgsCoordinateReferenceSystem("EPSG:3857")
+        utm_crs = QgsCoordinateReferenceSystem("EPSG:32651")
+        to_mercator = QgsCoordinateTransform(
+            utm_crs, mercator_crs, QgsProject.instance().transformContext()
+        )
+        bounds = to_mercator.transformBoundingBox(buffered.boundingBox())
+        width = bounds.width()
+        height = bounds.height()
+        if width <= 0 or height <= 0:
+            raise RuntimeError("Invalid projected barangay bounds.")
+
+        # Use a bounded output resolution from the outset. This prevents
+        # expensive full-resolution clipping before the downsampling step.
+        source_vrt = gdal.AutoCreateWarpedVRT(source_ds, None, "EPSG:3857")
+        if source_vrt is None:
+            raise RuntimeError("Unable to determine raster output resolution.")
+        source_gt = source_vrt.GetGeoTransform()
+        native_resolution = min(abs(source_gt[1]), abs(source_gt[5]))
+        resolution = max(native_resolution, width / 8192.0, height / 8192.0)
+        source_vrt = None
+        source_ds = None
+
+        notify(5, "Clipping and reprojecting barangay raster...")
         QApplication.processEvents()
-
-        # Cap output width to avoid excessively large MBTiles for QField.
-        # Preserve the geographic extent and aspect ratio.
-        source = gdal.Open(clipped_tif)
-        if source is None:
-            raise RuntimeError("Unable to open clipped raster.")
-        suggested = gdal.AutoCreateWarpedVRT(source, None, "EPSG:3857")
-        if suggested is None:
-            raise RuntimeError("Unable to calculate Web Mercator resolution.")
-        max_dimension = max(suggested.RasterXSize, suggested.RasterYSize)
-        scale = max(1.0, max_dimension / 8192.0)
-        transform = suggested.GetGeoTransform()
-        target_resolution = abs(transform[1]) * scale
-        suggested = None
-        source = None
-
         warped = gdal.Warp(
-            mercator_tif, clipped_tif,
+            mercator_tif, source_path,
             dstSRS="EPSG:3857",
             format="GTiff",
+            cutlineDSName=mask_geojson,
+            cropToCutline=True,
+            outputBounds=[bounds.xMinimum(), bounds.yMinimum(),
+                          bounds.xMaximum(), bounds.yMaximum()],
+            outputBoundsSRS="EPSG:3857",
+            xRes=resolution,
+            yRes=resolution,
             multithread=True,
-            xRes=target_resolution,
-            yRes=target_resolution,
-            callback=gdal_progress(40, 35, "Reprojecting basemap..."),
-            creationOptions=["TILED=YES", "COMPRESS=DEFLATE"],
+            warpMemoryLimit=256 * 1024 * 1024,
+            callback=gdal_progress(5, 70, "Clipping and reprojecting raster..."),
+            creationOptions=["TILED=YES", "COMPRESS=DEFLATE", "BIGTIFF=IF_SAFER"],
         )
         if warped is None:
             raise RuntimeError("Unable to reproject clipped basemap to EPSG:3857.")
