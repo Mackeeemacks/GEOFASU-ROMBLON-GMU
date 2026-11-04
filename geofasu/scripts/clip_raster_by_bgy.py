@@ -14,6 +14,8 @@ import hashlib
 import os
 import shutil
 import subprocess
+import tempfile
+from osgeo import gdal
 from pathlib import Path
 
 import processing
@@ -139,6 +141,7 @@ def clip_raster_by_bgy_memory(
     source_raster_cache=None,
     build_overviews=False,
     shared_clip_cache_dir=None,
+    psu_geoid=None,
 ):
     """Clip basemap to the 200 m buffered barangay boundary.
 
@@ -155,14 +158,16 @@ def clip_raster_by_bgy_memory(
     mask_layer = _build_mask_from_geometry(buffered)
     raster_layer = _source_raster(geoid_prefix, source_raster_cache=source_raster_cache)
 
-    target_path = os.path.join(output_folder, f"{geoid_prefix}_img_clipped.gpkg")
+    if not psu_geoid or not str(psu_geoid).isdigit():
+        raise ValueError("A numeric PSU GEOID is required for MBTiles output.")
+    target_path = os.path.join(output_folder, f"{psu_geoid}_img.mbtiles")
     output_for_gdal = target_path
     cache_file = None
 
     if shared_clip_cache_dir:
         os.makedirs(shared_clip_cache_dir, exist_ok=True)
         key = _clip_cache_key(geoid_prefix, raster_layer, buffered)
-        cache_file = os.path.join(shared_clip_cache_dir, f"{geoid_prefix}_{key}.gpkg")
+        cache_file = os.path.join(shared_clip_cache_dir, f"{geoid_prefix}_{key}.mbtiles")
 
         cached_layer = QgsRasterLayer(cache_file, "BASEMAP") if os.path.isfile(cache_file) else None
         if cached_layer is not None and cached_layer.isValid():
@@ -175,37 +180,55 @@ def clip_raster_by_bgy_memory(
 
     _safe_remove(output_for_gdal)
 
-    params = {
-        "INPUT": raster_layer,
-        "MASK": mask_layer,
-        "SOURCE_CRS": None,
-        "TARGET_CRS": None,
-        "TARGET_EXTENT": None,
-        "NODATA": None,
-        "ALPHA_BAND": False,
-        "CROP_TO_CUTLINE": True,
-        "KEEP_RESOLUTION": True,
-        "SET_RESOLUTION": False,
-        "X_RESOLUTION": None,
-        "Y_RESOLUTION": None,
-        "MULTITHREADING": True,
-        "OPTIONS": "",
-        "DATA_TYPE": 0,
-        "EXTRA": "-wo NUM_THREADS=ALL_CPUS",
-        "OUTPUT": output_for_gdal,
-    }
-    processing.run("gdal:cliprasterbymasklayer", params, feedback=feedback)
+    # MBTiles requires Web Mercator tiles. First clip to a temporary GeoTIFF,
+    # reproject to EPSG:3857, then create a genuine MBTiles raster dataset.
+    # The temporary files are never added to the QGIS layer tree.
+    with tempfile.TemporaryDirectory(prefix="geofasu_mbtiles_") as temp_dir:
+        clipped_tif = os.path.join(temp_dir, "clipped.tif")
+        mercator_tif = os.path.join(temp_dir, "mercator.tif")
+        params = {
+            "INPUT": raster_layer,
+            "MASK": mask_layer,
+            "SOURCE_CRS": None,
+            "TARGET_CRS": None,
+            "TARGET_EXTENT": None,
+            "NODATA": None,
+            "ALPHA_BAND": False,
+            "CROP_TO_CUTLINE": True,
+            "KEEP_RESOLUTION": True,
+            "SET_RESOLUTION": False,
+            "X_RESOLUTION": None,
+            "Y_RESOLUTION": None,
+            "MULTITHREADING": True,
+            "OPTIONS": "",
+            "DATA_TYPE": 0,
+            "EXTRA": "-wo NUM_THREADS=ALL_CPUS",
+            "OUTPUT": clipped_tif,
+        }
+        processing.run("gdal:cliprasterbymasklayer", params, feedback=feedback)
 
-    if build_overviews:
-        try:
-            subprocess.run(
-                ["gdaladdo", "-r", "average", output_for_gdal, "2", "4", "8", "16"],
-                check=True,
-                stdout=subprocess.DEVNULL,
-                stderr=subprocess.DEVNULL,
-            )
-        except Exception:
-            pass
+        warped = gdal.Warp(
+            mercator_tif, clipped_tif,
+            dstSRS="EPSG:3857",
+            format="GTiff",
+            multithread=True,
+            creationOptions=["TILED=YES", "COMPRESS=DEFLATE"],
+        )
+        if warped is None:
+            raise RuntimeError("Unable to reproject clipped basemap to EPSG:3857.")
+        warped = None
+
+        tiles = gdal.Translate(
+            output_for_gdal, mercator_tif,
+            format="MBTILES",
+            creationOptions=["TILE_FORMAT=PNG"],
+        )
+        if tiles is None:
+            raise RuntimeError("Unable to convert clipped basemap to MBTiles.")
+        tiles = None
+
+    # Reuse the finished tile archive. Avoid rebuilding overviews per PSU.
+    # A later, optional overview pass may be added for very large archives.
 
     if cache_file:
         cache_layer = QgsRasterLayer(cache_file, "BASEMAP")
