@@ -19,6 +19,7 @@ from osgeo import gdal
 from pathlib import Path
 
 import processing
+from qgis.PyQt.QtWidgets import QApplication
 from qgis.core import (
     QgsCoordinateReferenceSystem,
     QgsCoordinateTransform,
@@ -192,10 +193,12 @@ def clip_raster_by_bgy_memory(
             if percent != last[0]:
                 last[0] = percent
                 notify(percent, message)
+                QApplication.processEvents()
             return 0 if feedback.isCanceled() else 1
         return callback
 
     notify(0, "Clipping source raster...")
+    QApplication.processEvents()
     # MBTiles requires Web Mercator tiles. First clip to a temporary GeoTIFF,
     # reproject to EPSG:3857, then create a genuine MBTiles raster dataset.
     # The temporary files are never added to the QGIS layer tree.
@@ -225,6 +228,7 @@ def clip_raster_by_bgy_memory(
         if feedback.isCanceled():
             raise RuntimeError("Basemap processing canceled.")
         notify(40, "Reprojecting basemap to Web Mercator...")
+        QApplication.processEvents()
 
         # Cap output width to avoid excessively large MBTiles for QField.
         # Preserve the geographic extent and aspect ratio.
@@ -256,13 +260,14 @@ def clip_raster_by_bgy_memory(
         warped = None
         if feedback.isCanceled():
             raise RuntimeError("Basemap processing canceled.")
-        notify(75, "Encoding MBTiles...")
+        notify(75, "Encoding MBTiles (JPEG)...")
+        QApplication.processEvents()
 
         tiles = gdal.Translate(
             output_for_gdal, mercator_tif,
             format="MBTILES",
-            creationOptions=["TILE_FORMAT=PNG", "ZLEVEL=3"],
-            callback=gdal_progress(75, 25, "Encoding MBTiles..."),
+            creationOptions=["TILE_FORMAT=JPEG", "QUALITY=85"],
+            callback=gdal_progress(75, 25, "Encoding MBTiles (JPEG)..."),
         )
         if tiles is None:
             raise RuntimeError("Unable to convert clipped basemap to MBTiles.")
