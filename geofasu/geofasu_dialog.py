@@ -173,6 +173,9 @@ class geofasuDialog(QDialog, FORM_CLASS):
         year = int(data.get("Year", 0))
         rnd = int(data.get("Round", 0))
         psu_number = data.get("PSU_number")
+        geoid = str(data.get("GEOID", "")).strip()
+        if not re.fullmatch(r"\d{14}", geoid):
+            raise ValueError(f"Invalid 14-digit PSU GEOID for PSU_{psu_number}: {geoid!r}")
         province = str(data.get("Prov_name", "PROVINCE")).strip().upper()
 
         try:
@@ -187,8 +190,8 @@ class geofasuDialog(QDialog, FORM_CLASS):
             )
 
         return (
-            os.path.join(rollout_root, f"PSU_{psu_number}"),
-            os.path.join(rollout_root, "QField Packages", f"PSU_{psu_number}"),
+            os.path.join(rollout_root, geoid),
+            os.path.join(rollout_root, "QField Packages", geoid),
         )
 
     # =========================================================
@@ -235,12 +238,18 @@ class geofasuDialog(QDialog, FORM_CLASS):
 
                 number = int(psu_number)
                 text = f"{number} ({mun_name}, {psu_name})"
-                geoid_str = str(geoid)
+                geoid_str = str(geoid).strip()
+                if geoid_str.endswith(".0") and geoid_str[:-2].isdigit():
+                    geoid_str = geoid_str[:-2]
+                geoid_str = geoid_str.zfill(14)
+                if not re.fullmatch(r"\d{14}", geoid_str):
+                    raise ValueError(f"Invalid GEOID in Sample PSU worksheet: {geoid!r}")
                 geoid_prefix = geoid_str[2:5] + geoid_str[5:7]
 
                 data = {
                     "Prov_name": prov_name,
                     "PSU_number": number,
+                    "GEOID": geoid_str,
                     "Mun_name": mun_name,
                     "PSU_name": psu_name,
                     "Replicate_Number": rep,
@@ -1213,6 +1222,7 @@ class geofasuDialog(QDialog, FORM_CLASS):
                         geoid_prefix,
                         output_folder,
                         feedback=feedback,
+                        psu_geoid=psu_data.get("GEOID"),
                         source_raster_cache=self._source_raster_cache,
                         # Bulk clips are already small; building pyramids for
                         # every PSU adds substantial overhead.
