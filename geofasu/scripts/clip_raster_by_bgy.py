@@ -19,7 +19,6 @@ from osgeo import gdal, ogr, osr
 from pathlib import Path
 
 import processing
-from qgis.PyQt.QtWidgets import QApplication
 from qgis.core import (
     QgsCoordinateReferenceSystem,
     QgsCoordinateTransform,
@@ -193,12 +192,10 @@ def clip_raster_by_bgy_memory(
             if percent != last[0]:
                 last[0] = percent
                 notify(percent, message)
-                QApplication.processEvents()
             return 0 if feedback.isCanceled() else 1
         return callback
 
     notify(0, "Clipping source raster...")
-    QApplication.processEvents()
     # Directly clip/reproject into a bounded GeoTIFF, then encode MBTiles.
     # The temporary files are never added to the QGIS layer tree.
     with tempfile.TemporaryDirectory(prefix="geofasu_mbtiles_") as temp_dir:
@@ -254,7 +251,6 @@ def clip_raster_by_bgy_memory(
         source_ds = None
 
         notify(5, "Clipping and reprojecting barangay raster...")
-        QApplication.processEvents()
         warped = gdal.Warp(
             mercator_tif, source_path,
             dstSRS="EPSG:3857",
@@ -277,7 +273,6 @@ def clip_raster_by_bgy_memory(
         if feedback.isCanceled():
             raise RuntimeError("Basemap processing canceled.")
         notify(75, "Encoding MBTiles (JPEG)...")
-        QApplication.processEvents()
 
         tiles = gdal.Translate(
             output_for_gdal, mercator_tif,
